@@ -31,32 +31,8 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
-def find_soundfont() -> Path | None:
-    if BUNDLED_SOUNDFONT_PATH.exists():
-        return BUNDLED_SOUNDFONT_PATH
-
-    configured = os.getenv("PIANO_ML_SOUNDFONT")
-    if configured:
-        path = Path(configured).expanduser()
-        return path if path.exists() else None
-
-    candidates = [
-        PROJECT_ROOT / "soundfonts" / "GeneralUser-GS.sf3",
-        Path("/usr/share/sounds/sf2/FluidR3_GM.sf2"),
-        Path("/usr/share/soundfonts/FluidR3_GM.sf2"),
-        Path("/Library/Audio/Sounds/Banks/FluidR3_GM.sf2"),
-        Path("~/Library/Audio/Sounds/Banks/FluidR3_GM.sf2").expanduser(),
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-
-    for root in (Path("/opt/homebrew"), Path("/usr/local")):
-        for pattern in ("**/FluidR3_GM.sf2", "**/GeneralUser-GS.sf2", "**/GeneralUser-GS.sf3"):
-            match = next(root.glob(pattern), None)
-            if match is not None:
-                return match
-    return None
+def bundled_soundfont_path() -> Path | None:
+    return BUNDLED_SOUNDFONT_PATH if BUNDLED_SOUNDFONT_PATH.exists() else None
 
 
 def normalize_wav(path: str | Path, target_peak: float = 0.98) -> None:
@@ -89,7 +65,7 @@ def render_with_fluidsynth(midi_path: str | Path, wav_path: str | Path, sample_r
     fluidsynth = shutil.which("fluidsynth")
     if not fluidsynth:
         return False
-    soundfont_path = find_soundfont()
+    soundfont_path = bundled_soundfont_path()
     if soundfont_path is None:
         return False
 

@@ -22,7 +22,7 @@ def export_onnx(config: TrainConfig, checkpoint: str | Path, output: str | Path)
         input_names=["tokens"],
         output_names=["logits"],
         dynamic_axes={"tokens": {1: "sequence"}, "logits": {1: "sequence"}},
-        opset_version=17,
+        opset_version=18,
     )
     print(f"wrote {output}")
     return output

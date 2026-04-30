@@ -117,21 +117,6 @@ class OnnxCachedGenerator:
         repetition_penalty: float,
         prompt: list[int] | None = None,
     ) -> list[int]:
-        tokens = []
-        for tokens in self.stream_generate(length, temperature, top_k, top_p, repetition_penalty, prompt):
-            pass
-        return tokens
-
-    def stream_generate(
-        self,
-        length: int,
-        temperature: float,
-        top_k: int,
-        top_p: float,
-        repetition_penalty: float,
-        prompt: list[int] | None = None,
-        progress_every: int = 64,
-    ):
         tokens = list(prompt or [0])
         expect = "structure"
         for token in tokens:
@@ -169,6 +154,4 @@ class OnnxCachedGenerator:
                 break
             tokens.append(next_token)
             expect = _observe_remi(expect, next_token)
-            if len(tokens) % progress_every == 0 or len(tokens) >= length:
-                yield list(tokens)
-        yield list(tokens)
+        return tokens

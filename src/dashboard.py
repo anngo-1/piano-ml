@@ -16,7 +16,7 @@ import numpy as np
 
 from .config import load_config, seed_everything
 from .onnx_runtime import OnnxCachedGenerator
-from .remi import decode_midi_remi, remi_token_label
+from .remi import decode_midi_remi
 
 CONFIG_PATH = Path(os.getenv("PIANOGEN_CONFIG", "configs/config.json"))
 CHECKPOINT_PATH = Path(os.getenv("PIANOGEN_CHECKPOINT", "models/remi-17m/best_model.pt"))
@@ -155,14 +155,6 @@ def resolve_seed(seed) -> int:
     return seed_int
 
 
-def token_trace(tokens: list[int], tail: int = 96) -> str:
-    labels = [remi_token_label(token) for token in tokens[-tail:]]
-    prefix = f"{len(tokens)} tokens"
-    if len(tokens) > tail:
-        return f"{prefix}\n... | " + " | ".join(labels)
-    return f"{prefix}\n" + " | ".join(labels)
-
-
 def generate(
     runtime_mode: str,
     preset: str,
@@ -181,17 +173,14 @@ def generate(
 
         random.seed(seed_int)
         np.random.seed(seed_int)
-        tokens = []
-        for partial_tokens in model.stream_generate(
+        tokens = model.generate(
             length=int(length),
             temperature=float(temperature),
             top_k=int(top_k),
             top_p=float(top_p),
             repetition_penalty=float(repetition_penalty),
             prompt=[0],
-        ):
-            tokens = partial_tokens
-            yield None, None, f"Generating {len(tokens)}/{int(length)} tokens on {runtime}...", token_trace(tokens)
+        )
     else:
         seed_everything(seed_int)
         from .sample import generate_tokens
@@ -227,7 +216,7 @@ def generate(
         f"audio duration {midi.get_end_time():.2f}s on {runtime} in {elapsed:.1f}s. "
         f"Audio renderer: {renderer}. Seed: {seed_int}.{quality_note}"
     )
-    yield str(wav_path), str(wav_path), summary, token_trace(tokens)
+    return str(wav_path), str(wav_path), summary
 
 
 with gr.Blocks(title="pianogen") as demo:
@@ -255,11 +244,10 @@ with gr.Blocks(title="pianogen") as demo:
     audio = gr.Audio(label="Audio preview", type="filepath")
     wav_file = gr.File(label="Download WAV")
     summary = gr.Textbox(label="Summary")
-    trace = gr.Textbox(label="Token stream", lines=8, max_lines=14)
     button.click(
         generate,
         inputs=[runtime_mode, preset, length, temperature, top_k, top_p, repetition_penalty, seed],
-        outputs=[audio, wav_file, summary, trace],
+        outputs=[audio, wav_file, summary],
     )
 
 def launch() -> None:

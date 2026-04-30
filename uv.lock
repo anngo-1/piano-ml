@@ -1601,7 +1601,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pianogen"
+name = "piano-ml"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
@@ -1618,6 +1618,8 @@ dependencies = [
 [package.optional-dependencies]
 app = [
     { name = "gradio" },
+    { name = "onnxruntime", version = "1.24.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "onnxruntime", version = "1.25.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 onnx = [
     { name = "onnx" },
@@ -1631,6 +1633,7 @@ requires-dist = [
     { name = "gradio", marker = "extra == 'app'", specifier = ">=5.0" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "onnx", marker = "extra == 'onnx'", specifier = ">=1.15" },
+    { name = "onnxruntime", marker = "extra == 'app'", specifier = ">=1.17" },
     { name = "onnxruntime", marker = "extra == 'onnx'", specifier = ">=1.17" },
     { name = "onnxscript", marker = "extra == 'onnx'", specifier = ">=0.1" },
     { name = "pandas", specifier = ">=2.0" },

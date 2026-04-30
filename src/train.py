@@ -10,7 +10,7 @@ from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .config import TrainConfig, load_config, save_config, seed_everything
+from .config import TrainConfig, config_to_dict, load_config, save_config, seed_everything
 from .data import MusicTokenDataset
 from .model import MusicTransformer, count_parameters
 from .optim import Muon, split_muon_params
@@ -191,7 +191,7 @@ def train(config: TrainConfig) -> Path:
         if improved:
             best_loss = val_loss
             epochs_without_improvement = 0
-            torch.save({"model": model.state_dict(), "config": str(config.models_dir / "config.json")}, best_path)
+            torch.save({"model": model.state_dict(), "config": config_to_dict(config)}, best_path)
             print(f"saved {best_path}")
         elif not math.isnan(val_loss):
             epochs_without_improvement += 1
@@ -200,7 +200,7 @@ def train(config: TrainConfig) -> Path:
                 break
 
     if not best_path.exists():
-        torch.save({"model": model.state_dict(), "config": str(config.models_dir / "config.json")}, best_path)
+        torch.save({"model": model.state_dict(), "config": config_to_dict(config)}, best_path)
     return best_path
 
 

@@ -1,6 +1,10 @@
-# pianogen
+# piano-ml
 
-Train and sample a decoder-only Transformer that generates piano music as REMI tokens.
+This repository trains a decoder-only Transformer from scratch on the MAESTRO piano dataset for next-token prediction over REMI event tokens. It includes the data tokenization, training, evaluation, sampling, MIDI/audio rendering, and ONNX Runtime serving code needed to turn generated token sequences back into piano music.
+
+This is a research project I built to learn more about training next-token prediction models from scratch. It started as a class project in 2025, and more recently I revisited the code with the goal of improving performance, working on inference, and serving it online.
+
+Live Hugging Face demo: <https://huggingface.co/spaces/anngo-1/piano-ml>
 
 ## Model Architecture
 
@@ -11,11 +15,11 @@ Architecture details:
 - 2048-token training/evaluation sequence length in the provided configs
 - rotary position embeddings
 - grouped-query self-attention
-- PyTorch scaled dot-product attention
+- scaled dot-product attention
 - RMSNorm
 - SwiGLU feed-forward blocks
 - tied token embedding / output projection
-- KV-cached PyTorch autoregressive generation
+- KV-cached generation
 
 Training/inference details:
 
@@ -23,8 +27,8 @@ Training/inference details:
 - REMI tokenization
 - Muon optimizer
 - cosine learning-rate schedule
-- optional full-sequence ONNX export path
-- optional CPU int8 inference path in the app
+- ONNX export utility for checkpointed models
+- ONNX Runtime step-model serving in the app
 
 ## References
 
@@ -41,106 +45,13 @@ These are papers and projects that inspired this implementation. This repository
 - [Decoupled Weight Decay Regularization](https://arxiv.org/abs/1711.05101) introduced AdamW.
 - [Muon](https://github.com/KellerJordan/Muon) is the optimizer implementation this project follows.
 
-<details>
-<summary>BibTeX</summary>
+## Training / Eval
 
-```bibtex
-@inproceedings{vaswani2017attention,
-  title = {Attention Is All You Need},
-  author = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N. and Kaiser, Lukasz and Polosukhin, Illia},
-  booktitle = {Advances in Neural Information Processing Systems},
-  volume = {30},
-  year = {2017},
-  url = {https://arxiv.org/abs/1706.03762}
-}
-
-@inproceedings{huang2019music,
-  title = {Music Transformer},
-  author = {Huang, Cheng-Zhi Anna and Vaswani, Ashish and Uszkoreit, Jakob and Shazeer, Noam and Simon, Ian and Hawthorne, Curtis and Dai, Andrew M. and Hoffman, Matthew D. and Dinculescu, Monica and Eck, Douglas},
-  booktitle = {International Conference on Learning Representations},
-  year = {2019},
-  url = {https://arxiv.org/abs/1809.04281}
-}
-
-@inproceedings{hawthorne2019enabling,
-  title = {Enabling Factorized Piano Music Modeling and Generation with the MAESTRO Dataset},
-  author = {Hawthorne, Curtis and Stasyuk, Andriy and Roberts, Adam and Simon, Ian and Huang, Cheng-Zhi Anna and Dieleman, Sander and Elsen, Erich and Engel, Jesse and Eck, Douglas},
-  booktitle = {International Conference on Learning Representations},
-  year = {2019},
-  url = {https://arxiv.org/abs/1810.12247}
-}
-
-@inproceedings{huang2020pop,
-  title = {Pop Music Transformer: Beat-based Modeling and Generation of Expressive Pop Piano Compositions},
-  author = {Huang, Yu-Siang and Yang, Yi-Hsuan},
-  booktitle = {Proceedings of the 28th ACM International Conference on Multimedia},
-  year = {2020},
-  url = {https://arxiv.org/abs/2002.00212}
-}
-
-@article{su2021roformer,
-  title = {RoFormer: Enhanced Transformer with Rotary Position Embedding},
-  author = {Su, Jianlin and Lu, Yu and Pan, Shengfeng and Murtadha, Ahmed and Wen, Bo and Liu, Yunfeng},
-  journal = {arXiv preprint arXiv:2104.09864},
-  year = {2021},
-  url = {https://arxiv.org/abs/2104.09864}
-}
-
-@inproceedings{ainslie2023gqa,
-  title = {{GQA}: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints},
-  author = {Ainslie, Joshua and Lee-Thorp, James and de Jong, Michiel and Zemlyanskiy, Yury and Lebron, Federico and Sanghai, Sumit},
-  booktitle = {Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing},
-  pages = {4895--4901},
-  year = {2023},
-  publisher = {Association for Computational Linguistics},
-  doi = {10.18653/v1/2023.emnlp-main.298},
-  url = {https://aclanthology.org/2023.emnlp-main.298/}
-}
-
-@inproceedings{zhang2019root,
-  title = {Root Mean Square Layer Normalization},
-  author = {Zhang, Biao and Sennrich, Rico},
-  booktitle = {Advances in Neural Information Processing Systems},
-  volume = {32},
-  year = {2019},
-  url = {https://papers.neurips.cc/paper/9403-root-mean-square-layer-normalization}
-}
-
-@article{shazeer2020glu,
-  title = {{GLU} Variants Improve Transformer},
-  author = {Shazeer, Noam},
-  journal = {arXiv preprint arXiv:2002.05202},
-  year = {2020},
-  url = {https://arxiv.org/abs/2002.05202}
-}
-
-@inproceedings{loshchilov2019decoupled,
-  title = {Decoupled Weight Decay Regularization},
-  author = {Loshchilov, Ilya and Hutter, Frank},
-  booktitle = {International Conference on Learning Representations},
-  year = {2019},
-  url = {https://arxiv.org/abs/1711.05101}
-}
-
-@misc{jordan2024muon,
-  title = {Muon: An optimizer for hidden layers in neural networks},
-  author = {Keller Jordan and Yuchen Jin and Vlado Boza and Jiacheng You and Franz Cesista and Laker Newhouse and Jeremy Bernstein},
-  year = {2024},
-  url = {https://kellerjordan.github.io/posts/muon/}
-}
-```
-
-</details>
-
-## Install Dependencies
+Install the base dependencies for data preparation, training, evaluation, and checkpoint-based inference:
 
 ```bash
 uv sync
 ```
-
-For better WAV rendering, install FluidSynth: <https://www.fluidsynth.org/wiki/Download/#distributions>
-
-## Training / Eval
 
 Download MAESTRO v3.0.0 into `data/` and tokenize the train/validation splits into REMI sequences:
 
@@ -163,12 +74,11 @@ uv run python -m src.train --config configs/38m.json
 Evaluate a checkpoint on the validation split:
 
 ```bash
-uv run python -m src.eval \
-  --config configs/config.json \
-  --checkpoint models/remi-17m/best_model.pt
+uv run python -m src.eval --checkpoint models/remi-17m/best_model.pt
 ```
 
 Training writes checkpoints under the `models_dir` in each config. The default config writes to `models/remi-17m/`; the 38.2M config writes to `models/remi-38m/`.
+New checkpoints include their training config, so evaluation, generation, and ONNX export can infer the model architecture from the checkpoint.
 
 ## Model Configs
 
@@ -179,11 +89,12 @@ Training writes checkpoints under the `models_dir` in each config. The default c
 
 ## Inference
 
+Install FluidSynth for best audio quality: <https://www.fluidsynth.org/wiki/Download/>
+
 Generate a MIDI file from a checkpoint:
 
 ```bash
 uv run python -m src.generate \
-  --config configs/config.json \
   --checkpoint models/remi-17m/best_model.pt \
   --output outputs/sample.mid
 ```
@@ -194,11 +105,15 @@ Render the MIDI to WAV for listening:
 uv run python -m src.render outputs/sample.mid --output outputs/sample.wav
 ```
 
-`src.render` uses FluidSynth when it is installed. Otherwise it falls back to `pretty_midi` synthesis, which is lower quality.
+`src.render` renders through FluidSynth with the bundled `soundfonts/GeneralUser-GS.sf2` SoundFont and forces acoustic grand piano. If FluidSynth is unavailable, it falls back to `pretty_midi` synthesis.
 
-PyTorch generation uses a KV cache. `src.export` exports a full-sequence ONNX model for standard ONNX Runtime inference. The app also loads cached ONNX Runtime step models named `models/remi-17m/step.onnx` or `models/remi-17m/step-int8.onnx` when those files are present. The CPU int8 path is intended for faster CPU serving and can sound slightly worse than FP32.
+Generation uses a KV cache. The app uses cached ONNX Runtime step models for faster local serving.
 
-If you are running locally and just want to use the app, pull the published model artifacts from the Hugging Face Space:
+## App
+
+Install FluidSynth for best audio quality: <https://www.fluidsynth.org/wiki/Download/>
+
+To run the app locally with the published model artifacts:
 
 ```bash
 uv run --with huggingface_hub python - <<'PY'
@@ -218,9 +133,9 @@ snapshot_download(
 PY
 ```
 
-Optional audio UI, for listening to generated samples:
-
 ```bash
 uv sync --extra app
 uv run python app.py
 ```
+
+The app ships with `soundfonts/GeneralUser-GS.sf2` and uses it as the default SoundFont for FluidSynth rendering. Generated MIDI is forced to acoustic grand piano before rendering. Set `PIANO_ML_FLUIDSYNTH_GAIN` to adjust render volume; the default is `0.9`. The bundled SoundFont license is included at `soundfonts/GeneralUser-GS-LICENSE.txt`.

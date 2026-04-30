@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import inspect
 import os
+import queue
 import secrets
-import shutil
-import subprocess
 import tempfile
+import threading
 import time
 import warnings
 import wave
@@ -14,16 +14,17 @@ from pathlib import Path
 import gradio as gr
 import numpy as np
 
+from .audio import render_with_fluidsynth
 from .config import load_config, seed_everything
 from .onnx_runtime import OnnxCachedGenerator
 from .remi import decode_midi_remi
+from .render import force_acoustic_grand_piano
 
-CONFIG_PATH = Path(os.getenv("PIANOGEN_CONFIG", "configs/config.json"))
-CHECKPOINT_PATH = Path(os.getenv("PIANOGEN_CHECKPOINT", "models/remi-17m/best_model.pt"))
-ONNX_STEP_PATH = Path(os.getenv("PIANOGEN_ONNX_STEP", "models/remi-17m/step-int8.onnx"))
+CONFIG_PATH = Path(os.getenv("PIANO_ML_CONFIG", "configs/config.json"))
+CHECKPOINT_PATH = Path(os.getenv("PIANO_ML_CHECKPOINT", "models/remi-17m/best_model.pt"))
+ONNX_STEP_PATH = Path(os.getenv("PIANO_ML_ONNX_STEP", "models/remi-17m/step-int8.onnx"))
 ONNX_FP32_STEP_PATH = Path("models/remi-17m/step.onnx")
 SAMPLE_RATE = 44100
-SOUNDFONT_PATH = Path(os.getenv("PIANOGEN_SOUNDFONT", "/usr/share/sounds/sf2/FluidR3_GM.sf2"))
 
 _MODELS: dict[str, object] = {}
 _DEVICE = None
@@ -58,7 +59,7 @@ def load_model(runtime_mode: str) -> tuple[object, object, object, str]:
     config = _CONFIG
     requested_onnx_path, runtime = _onnx_path_for_mode(runtime_mode)
     onnx_path = requested_onnx_path if requested_onnx_path.exists() else ONNX_FP32_STEP_PATH
-    if onnx_path.exists() and _env_flag("PIANOGEN_ONNX", True):
+    if onnx_path.exists() and _env_flag("PIANO_ML_ONNX", True):
         cache_key = f"onnx:{onnx_path}"
         if cache_key not in _MODELS:
             _MODELS[cache_key] = OnnxCachedGenerator(config, onnx_path)
@@ -76,22 +77,22 @@ def load_model(runtime_mode: str) -> tuple[object, object, object, str]:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if not CHECKPOINT_PATH.exists():
         raise FileNotFoundError(
-            f"Checkpoint not found: {CHECKPOINT_PATH}. Set PIANOGEN_CHECKPOINT or place the model file there."
+            f"Checkpoint not found: {CHECKPOINT_PATH}. Set PIANO_ML_CHECKPOINT or place the model file there."
         )
     cache_key = f"torch:{device.type}"
     if cache_key not in _MODELS:
         model = load_checkpoint(config, CHECKPOINT_PATH, device)
-        if device.type == "cpu" and _env_flag("PIANOGEN_QUANTIZE", True):
+        if device.type == "cpu" and _env_flag("PIANO_ML_QUANTIZE", True):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", DeprecationWarning)
                 model = torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
-            setattr(model, "_pianogen_quantized", True)
+            setattr(model, "_piano_ml_quantized", True)
         model.eval()
         _MODELS[cache_key] = model
     model = _MODELS[cache_key]
     model.eval()
     _DEVICE = device
-    runtime = f"{device.type}+int8" if getattr(model, "_pianogen_quantized", False) else device.type
+    runtime = f"{device.type}+int8" if getattr(model, "_piano_ml_quantized", False) else device.type
     return config, model, device, runtime
 
 
@@ -112,27 +113,13 @@ def write_wav(audio: np.ndarray, path: str | Path, sample_rate: int = SAMPLE_RAT
 
 
 
-def render_audio(midi, midi_path: Path, wav_path: Path) -> str:
-    fluidsynth = shutil.which("fluidsynth")
-    if fluidsynth and SOUNDFONT_PATH.exists():
-        subprocess.run(
-            [
-                fluidsynth,
-                "-ni",
-                str(SOUNDFONT_PATH),
-                str(midi_path),
-                "-F",
-                str(wav_path),
-                "-r",
-                str(SAMPLE_RATE),
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        return str(wav_path)
+def render_audio(midi, midi_path: Path, wav_path: Path) -> tuple[str, str]:
+    midi = force_acoustic_grand_piano(midi)
+    midi.write(str(midi_path))
+    if render_with_fluidsynth(midi_path, wav_path, SAMPLE_RATE):
+        return str(wav_path), "FluidSynth"
     audio = midi.synthesize(fs=SAMPLE_RATE)
-    return write_wav(audio, wav_path)
+    return write_wav(audio, wav_path), "pretty_midi"
 
 def apply_preset(preset: str):
     values = PRESETS[preset]
@@ -167,6 +154,44 @@ def generate(
 ):
     started = time.perf_counter()
     seed_int = resolve_seed(seed)
+    _, tokens, runtime = generate_tokens_for_dashboard(
+        runtime_mode,
+        int(length),
+        temperature,
+        top_k,
+        top_p,
+        repetition_penalty,
+        seed_int,
+    )
+    tmpdir = Path(tempfile.mkdtemp(prefix="piano_ml_"))
+    midi_path = tmpdir / f"piano_ml_{preset.lower()}_{seed_int}.mid"
+    wav_path = tmpdir / f"piano_ml_{preset.lower()}_{seed_int}.wav"
+    midi = decode_midi_remi(tokens, midi_path)
+    _, renderer = render_audio(midi, midi_path, wav_path)
+    note_count = sum(len(inst.notes) for inst in midi.instruments)
+    elapsed = time.perf_counter() - started
+    summary = (
+        f"Generated {len(tokens)} tokens, {note_count} notes, "
+        f"audio duration {midi.get_end_time():.2f}s on {runtime} in {elapsed:.1f}s. "
+        f"Audio renderer: {renderer}. Seed: {seed_int}."
+    )
+    return str(wav_path), str(wav_path), summary
+
+
+def clear_outputs():
+    return None, None, ""
+
+
+def generate_tokens_for_dashboard(
+    runtime_mode: str,
+    length: int,
+    temperature: float,
+    top_k: int,
+    top_p: float,
+    repetition_penalty: float,
+    seed_int: int,
+    progress_callback=None,
+):
     config, model, device, runtime = load_model(runtime_mode)
     if isinstance(model, OnnxCachedGenerator):
         import random
@@ -180,6 +205,7 @@ def generate(
             top_p=float(top_p),
             repetition_penalty=float(repetition_penalty),
             prompt=[0],
+            progress_callback=progress_callback,
         )
     else:
         seed_everything(seed_int)
@@ -198,41 +224,98 @@ def generate(
             repetition_penalty=float(repetition_penalty),
             constrained=True,
         )
-    tmpdir = Path(tempfile.mkdtemp(prefix="pianogen_"))
-    midi_path = tmpdir / f"pianogen_{preset.lower()}_{seed_int}.mid"
-    wav_path = tmpdir / f"pianogen_{preset.lower()}_{seed_int}.wav"
-    midi = decode_midi_remi(tokens, midi_path)
-    render_audio(midi, midi_path, wav_path)
-    note_count = sum(len(inst.notes) for inst in midi.instruments)
-    renderer = "FluidSynth" if shutil.which("fluidsynth") and SOUNDFONT_PATH.exists() else "pretty_midi"
-    elapsed = time.perf_counter() - started
-    quality_note = ""
-    if runtime.startswith("onnxruntime") and runtime_mode == "Fast":
-        quality_note = " Fast uses quantized ONNX and may be lower quality."
-    elif runtime.startswith("cpu"):
-        quality_note = " Running from the PyTorch checkpoint on CPU is slower than cached ONNX."
-    summary = (
-        f"Generated {len(tokens)} tokens, {note_count} notes, "
-        f"audio duration {midi.get_end_time():.2f}s on {runtime} in {elapsed:.1f}s. "
-        f"Audio renderer: {renderer}. Seed: {seed_int}.{quality_note}"
+    return config, tokens, runtime
+
+
+def generate_stream(
+    runtime_mode: str,
+    preset: str,
+    length: int,
+    temperature: float,
+    top_k: int,
+    top_p: float,
+    repetition_penalty: float,
+    seed: int,
+):
+    started = time.perf_counter()
+    seed_int = resolve_seed(seed)
+    target_length = int(length)
+    yield None, None, f"Generating tokens: 0 / {target_length}"
+    progress: queue.Queue[tuple[str, object]] = queue.Queue()
+
+    def report_progress(current: int, total: int) -> None:
+        if current == total or current % 32 == 0:
+            progress.put(("progress", (current, total)))
+
+    def worker() -> None:
+        try:
+            progress.put(
+                (
+                    "done",
+                    generate_tokens_for_dashboard(
+                        runtime_mode,
+                        target_length,
+                        temperature,
+                        top_k,
+                        top_p,
+                        repetition_penalty,
+                        seed_int,
+                        progress_callback=report_progress,
+                    ),
+                )
+            )
+        except Exception as exc:
+            progress.put(("error", exc))
+
+    threading.Thread(target=worker, daemon=True).start()
+    while True:
+        kind, payload = progress.get()
+        if kind == "progress":
+            current, total = payload
+            yield None, None, f"Generating tokens: {current} / {total}"
+        elif kind == "done":
+            _, tokens, runtime = payload
+            break
+        else:
+            raise payload
+    token_elapsed = time.perf_counter() - started
+    tokens_per_second = len(tokens) / max(token_elapsed, 1e-6)
+    yield None, None, (
+        f"Generated tokens: {len(tokens)} / {target_length} "
+        f"({tokens_per_second:.1f} tok/s). Rendering piano audio..."
     )
-    return str(wav_path), str(wav_path), summary
+
+    tmpdir = Path(tempfile.mkdtemp(prefix="piano_ml_"))
+    midi_path = tmpdir / f"piano_ml_{preset.lower()}_{seed_int}.mid"
+    wav_path = tmpdir / f"piano_ml_{preset.lower()}_{seed_int}.wav"
+    midi = decode_midi_remi(tokens, midi_path)
+    render_started = time.perf_counter()
+    audio_path, renderer = render_audio(midi, midi_path, wav_path)
+    render_elapsed = time.perf_counter() - render_started
+    note_count = sum(len(inst.notes) for inst in midi.instruments)
+    elapsed = time.perf_counter() - started
+    final_progress = (
+        f"Done: {len(tokens)} / {target_length} tokens, {note_count} notes, "
+        f"{tokens_per_second:.1f} tok/s, render {render_elapsed:.1f}s, "
+        f"total {elapsed:.1f}s, {renderer}, seed {seed_int}."
+    )
+    yield audio_path, str(wav_path), final_progress
 
 
-with gr.Blocks(title="pianogen") as demo:
+with gr.Blocks(title="piano-ml") as demo:
     gr.Markdown(
-        "# pianogen\n"
-        "Unconditional piano audio generation with a REMI-token Transformer. "
-        "The app renders audio on the server and returns a preview plus a downloadable WAV."
+        "# piano-ml\n"
+        "Generate piano music with the 17M REMI-token Transformer. "
+        "Audio is rendered as acoustic grand piano with the bundled GeneralUser GS SoundFont."
     )
     with gr.Row():
         runtime_mode = gr.Radio(["Fast", "Quality"], value="Fast", label="Runtime")
         preset = gr.Dropdown(list(PRESETS), value="Balanced", label="Preset")
-        length = gr.Slider(256, 2048, value=1024, step=128, label="Generation tokens")
-        seed = gr.Number(value=-1, precision=0, label="Seed (-1 random)")
+        length = gr.Slider(256, 2048, value=1024, step=128, label="Length (tokens)")
+        seed = gr.Number(value=-1, precision=0, label="Seed (-1 = random)")
     gr.Markdown(
-        "Fast uses quantized ONNX when cached step files are present. "
-        "Without those files, the app uses the PyTorch checkpoint with CPU int8 quantization."
+        "Fast uses the quantized 17M ONNX model. Quality uses the FP32 17M ONNX model. "
+        "Length is measured in REMI tokens, not notes."
     )
     with gr.Row():
         temperature = gr.Slider(0.7, 1.35, value=1.02, step=0.01, label="Temperature")
@@ -241,13 +324,18 @@ with gr.Blocks(title="pianogen") as demo:
         repetition_penalty = gr.Slider(1.0, 1.2, value=1.09, step=0.01, label="Repetition penalty")
     preset.change(apply_preset, inputs=preset, outputs=[temperature, top_k, top_p, repetition_penalty, seed])
     button = gr.Button("Generate", variant="primary")
-    audio = gr.Audio(label="Audio preview", type="filepath")
+    progress = gr.Textbox(label="Progress", interactive=False)
+    audio = gr.Audio(label="Audio preview", type="filepath", interactive=False, autoplay=True)
     wav_file = gr.File(label="Download WAV")
-    summary = gr.Textbox(label="Summary")
     button.click(
-        generate,
+        clear_outputs,
+        outputs=[audio, wav_file, progress],
+        queue=False,
+    ).then(
+        generate_stream,
         inputs=[runtime_mode, preset, length, temperature, top_k, top_p, repetition_penalty, seed],
-        outputs=[audio, wav_file, summary],
+        outputs=[audio, wav_file, progress],
+        stream_every=0.25,
     )
 
 def launch() -> None:

@@ -1,17 +1,33 @@
 from __future__ import annotations
 
 import argparse
-import os
-import shutil
-import subprocess
+import tempfile
 import wave
 from pathlib import Path
 
 import numpy as np
 import pretty_midi
 
+from .audio import render_with_fluidsynth
+from .remi import ACOUSTIC_GRAND_PIANO_PROGRAM
+
 SAMPLE_RATE = 44100
-SOUNDFONT_PATH = Path(os.getenv("PIANOGEN_SOUNDFONT", "/usr/share/sounds/sf2/FluidR3_GM.sf2"))
+
+
+def force_acoustic_grand_piano(midi: pretty_midi.PrettyMIDI) -> pretty_midi.PrettyMIDI:
+    notes = []
+    for instrument in midi.instruments:
+        if instrument.is_drum:
+            continue
+        notes.extend(instrument.notes)
+
+    _, tempi = midi.get_tempo_changes()
+    initial_tempo = float(tempi[0]) if len(tempi) else 120.0
+    piano_midi = pretty_midi.PrettyMIDI(initial_tempo=initial_tempo)
+    piano = pretty_midi.Instrument(program=ACOUSTIC_GRAND_PIANO_PROGRAM, is_drum=False)
+    piano.notes = sorted(notes, key=lambda note: (note.start, note.pitch, note.end))
+    piano_midi.instruments.append(piano)
+    return piano_midi
 
 
 def _write_wav(audio: np.ndarray, path: str | Path, sample_rate: int = SAMPLE_RATE) -> Path:
@@ -36,27 +52,13 @@ def render_midi(midi_path: str | Path, output_path: str | Path) -> tuple[Path, s
     midi_path = Path(midi_path)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    midi = force_acoustic_grand_piano(pretty_midi.PrettyMIDI(str(midi_path)))
+    with tempfile.TemporaryDirectory(prefix="piano_ml_render_") as tmpdir:
+        piano_midi_path = Path(tmpdir) / "piano.mid"
+        midi.write(str(piano_midi_path))
+        if render_with_fluidsynth(piano_midi_path, output_path, SAMPLE_RATE):
+            return output_path, "FluidSynth"
 
-    fluidsynth = shutil.which("fluidsynth")
-    if fluidsynth and SOUNDFONT_PATH.exists():
-        subprocess.run(
-            [
-                fluidsynth,
-                "-ni",
-                str(SOUNDFONT_PATH),
-                str(midi_path),
-                "-F",
-                str(output_path),
-                "-r",
-                str(SAMPLE_RATE),
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        return output_path, "FluidSynth"
-
-    midi = pretty_midi.PrettyMIDI(str(midi_path))
     audio = midi.synthesize(fs=SAMPLE_RATE)
     return _write_wav(audio, output_path), "pretty_midi"
 

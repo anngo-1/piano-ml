@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pianogen"
+name = "piano-ml"
 version = "0.1.0"
 description = "Train and sample a lightweight Transformer for symbolic piano music generation."
 readme = "README.md"
@@ -19,7 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 onnx = ["onnx>=1.15", "onnxruntime>=1.17", "onnxscript>=0.1"]
-app = ["gradio>=5.0"]
+app = ["gradio>=5.0", "onnxruntime>=1.17"]
 
 [tool.setuptools.packages.find]
 where = ["."]

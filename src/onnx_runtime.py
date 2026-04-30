@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +15,17 @@ _REMI_ALLOWED = {
     "duration": np.arange(REMI_DUR_START, REMI_VEL_START, dtype=np.int64),
     "velocity": np.arange(REMI_VEL_START, REMI_TOKEN_END, dtype=np.int64),
 }
+
+
+def _ensure_external_data_alias(model_path: Path) -> None:
+    expected = model_path.parent / "step-compact.onnx.data"
+    published = model_path.parent / "step.onnx.data"
+    if model_path.name != "step.onnx" or expected.exists() or not published.exists():
+        return
+    try:
+        expected.symlink_to(published.name)
+    except OSError:
+        shutil.copy2(published, expected)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -94,12 +107,27 @@ class OnnxCachedGenerator:
 
         self.config = config
         self.model_path = Path(model_path)
+        _ensure_external_data_alias(self.model_path)
         options = ort.SessionOptions()
-        options.intra_op_num_threads = _env_int("PIANOGEN_ONNX_THREADS", 1)
+        options.intra_op_num_threads = _env_int("PIANO_ML_ONNX_THREADS", 1)
         options.inter_op_num_threads = 1
         options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        self.session = ort.InferenceSession(str(self.model_path), sess_options=options, providers=["CPUExecutionProvider"])
+        try:
+            self.session = ort.InferenceSession(
+                str(self.model_path),
+                sess_options=options,
+                providers=["CPUExecutionProvider"],
+            )
+        except Exception as exc:
+            message = str(exc)
+            if "External data path does not exist" in message:
+                raise FileNotFoundError(
+                    f"ONNX model {self.model_path} references a missing external data file. "
+                    "Re-download the ONNX artifacts, including any *.onnx.data files, or set "
+                    "PIANO_ML_ONNX_STEP to a self-contained ONNX step model."
+                ) from exc
+            raise
         inputs = self.session.get_inputs()
         self.input_names = [item.name for item in inputs]
         self.head_dim = config.model.d_model // config.model.num_heads
@@ -116,6 +144,7 @@ class OnnxCachedGenerator:
         top_p: float,
         repetition_penalty: float,
         prompt: list[int] | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[int]:
         tokens = list(prompt or [0])
         expect = "structure"
@@ -153,5 +182,7 @@ class OnnxCachedGenerator:
             if next_token is None:
                 break
             tokens.append(next_token)
+            if progress_callback is not None:
+                progress_callback(len(tokens), length)
             expect = _observe_remi(expect, next_token)
         return tokens

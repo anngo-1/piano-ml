@@ -9,8 +9,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from .config import load_config
-from .generate import load_checkpoint
+from .generate import load_checkpoint, resolve_config
 
 
 def _load_chunks(data_dir: Path, seq_len: int, pad_token: int) -> list[tuple[list[int], list[int]]]:
@@ -33,8 +32,8 @@ def _load_chunks(data_dir: Path, seq_len: int, pad_token: int) -> list[tuple[lis
     return chunks
 
 
-def evaluate(config_path: str | Path, checkpoint: str | Path, batch_size: int) -> tuple[float, float, int]:
-    config = load_config(config_path)
+def evaluate(config_path: str | Path | None, checkpoint: str | Path, batch_size: int) -> tuple[float, float, int]:
+    config = resolve_config(config_path, checkpoint)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = load_checkpoint(config, checkpoint, device).eval()
     chunks = _load_chunks(config.processed_dir / "validation", config.seq_len, config.token_pad)
@@ -64,7 +63,7 @@ def evaluate(config_path: str | Path, checkpoint: str | Path, batch_size: int) -
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="configs/config.json")
+    parser.add_argument("--config", default=None)
     parser.add_argument("--checkpoint", default="models/remi-17m/best_model.pt")
     parser.add_argument("--batch-size", type=int, default=8)
     args = parser.parse_args()

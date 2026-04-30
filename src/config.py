@@ -76,7 +76,11 @@ def _coerce_path(value: str | Path) -> Path:
 
 
 def load_config(path: str | Path) -> TrainConfig:
-    raw = json.loads(Path(path).read_text())
+    return config_from_dict(json.loads(Path(path).read_text()))
+
+
+def config_from_dict(raw: dict[str, Any]) -> TrainConfig:
+    raw = dict(raw)
     model = ModelConfig(**raw.pop("model", {}))
     sampling = SamplingConfig(**raw.pop("sampling", {}))
     cfg = TrainConfig(**raw, model=model, sampling=sampling)
@@ -88,7 +92,7 @@ def load_config(path: str | Path) -> TrainConfig:
     return cfg
 
 
-def save_config(config: TrainConfig, path: str | Path) -> None:
+def config_to_dict(config: TrainConfig) -> dict[str, Any]:
     def convert(value: Any) -> Any:
         if isinstance(value, Path):
             return str(value)
@@ -96,7 +100,11 @@ def save_config(config: TrainConfig, path: str | Path) -> None:
             return {k: convert(getattr(value, k)) for k in value.__dataclass_fields__}
         return value
 
-    Path(path).write_text(json.dumps(convert(config), indent=2) + "\n")
+    return convert(config)
+
+
+def save_config(config: TrainConfig, path: str | Path) -> None:
+    Path(path).write_text(json.dumps(config_to_dict(config), indent=2) + "\n")
 
 
 def seed_everything(seed: int) -> None:

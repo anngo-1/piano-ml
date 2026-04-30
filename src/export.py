@@ -5,7 +5,7 @@ from pathlib import Path
 import torch
 
 from .config import TrainConfig
-from .generate import load_checkpoint
+from .generate import load_checkpoint, resolve_config
 
 
 def export_onnx(config: TrainConfig, checkpoint: str | Path, output: str | Path) -> Path:
@@ -31,14 +31,12 @@ def export_onnx(config: TrainConfig, checkpoint: str | Path, output: str | Path)
 def main() -> None:
     import argparse
 
-    from .config import load_config
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="configs/config.json")
+    parser.add_argument("--config", default=None)
     parser.add_argument("--checkpoint", default="models/remi-17m/best_model.pt")
     parser.add_argument("--output", default="models/model.onnx")
     args = parser.parse_args()
-    export_onnx(load_config(args.config), args.checkpoint, args.output)
+    export_onnx(resolve_config(args.config, args.checkpoint), args.checkpoint, args.output)
 
 
 if __name__ == "__main__":

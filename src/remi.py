@@ -19,6 +19,7 @@ REMI_VELOCITY_BINS = 32
 REMI_TOKEN_END = REMI_VEL_START + REMI_VELOCITY_BINS
 REMI_TOKEN_PAD = REMI_TOKEN_END + 1
 REMI_VOCAB_SIZE = REMI_TOKEN_PAD + 1
+ACOUSTIC_GRAND_PIANO_PROGRAM = 0
 
 
 def remi_vocab_size() -> int:
@@ -100,7 +101,7 @@ def decode_midi_remi(tokens: list[int] | np.ndarray, path: str | Path, bpm: floa
     seconds_per_bar = (60.0 / bpm) * 4.0
     seconds_per_pos = seconds_per_bar / REMI_POSITIONS_PER_BAR
     midi = pretty_midi.PrettyMIDI(initial_tempo=bpm)
-    instrument = pretty_midi.Instrument(program=0)
+    instrument = pretty_midi.Instrument(program=ACOUSTIC_GRAND_PIANO_PROGRAM)
     token_list = [int(t) for t in tokens]
     bar = -1
     pos = 0
@@ -139,6 +140,8 @@ def decode_midi_remi(tokens: list[int] | np.ndarray, path: str | Path, bpm: floa
                 instrument.notes.append(pretty_midi.Note(velocity=velocity, pitch=pitch, start=start, end=end))
 
     instrument.notes.sort(key=lambda n: (n.start, n.pitch, n.end))
+    instrument.program = ACOUSTIC_GRAND_PIANO_PROGRAM
+    instrument.is_drum = False
     midi.instruments.append(instrument)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     midi.write(str(path))

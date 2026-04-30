@@ -39,7 +39,6 @@ The local sampler uses PyTorch.
 ## Install
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync --extra app
 ```
 

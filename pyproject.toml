@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pianogen"
+version = "0.1.0"
+description = "Train and sample a lightweight Transformer for symbolic piano music generation."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "pandas>=2.0",
+  "pretty_midi>=0.2.10",
+  "requests>=2.31",
+  "torch>=2.1",
+  "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+onnx = ["onnx>=1.15", "onnxruntime>=1.17"]
+app = ["gradio>=5.0"]
+
+[project.scripts]
+pianogen = "src.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src"]

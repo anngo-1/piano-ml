@@ -1,0 +1,1 @@
+pianogen[app] @ git+https://github.com/anngo-1/piano-ml.git@main

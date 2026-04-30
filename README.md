@@ -70,11 +70,3 @@ Try the 38.2M config:
 ```bash
 uv run python -m src.train --config configs/38m.json
 ```
-
-## Layout
-
-```text
-app.py                  local app launcher
-configs/                configs
-src/                    code
-```

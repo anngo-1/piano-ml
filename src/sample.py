@@ -195,7 +195,7 @@ def generate_tokens_cached(
 
     while len(tokens) < length:
         x = torch.tensor([[input_token]], dtype=torch.long, device=device)
-        logits_batch, caches = model.forward_cached(x, caches, start_pos=position)
+        logits_batch, caches = model.forward_cached(x, caches, start_pos=position, max_cache_len=length)
         logits = logits_batch[0, -1]
         allowed = grammar.allowed(device) if constrained else None
         logits = filter_logits(

@@ -6,6 +6,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+KVCache = tuple[torch.Tensor, torch.Tensor, int]
+
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float, max_len: int):
@@ -196,9 +198,10 @@ class ModernCausalSelfAttention(nn.Module):
     def forward_cached(
         self,
         x: torch.Tensor,
-        cache: tuple[torch.Tensor, torch.Tensor] | None,
+        cache: KVCache | None,
         start_pos: int,
-    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        max_cache_len: int | None = None,
+    ) -> tuple[torch.Tensor, KVCache]:
         batch, seq_len, _ = x.shape
         q = self.q_proj(x).view(batch, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         k = self.k_proj(x).view(batch, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
@@ -207,14 +210,28 @@ class ModernCausalSelfAttention(nn.Module):
         q = _apply_rope(q, cos, sin)
         k = _apply_rope(k, cos, sin)
 
-        if cache is not None:
-            past_k, past_v = cache
-            k = torch.cat((past_k, k), dim=2)
-            v = torch.cat((past_v, v), dim=2)
-        next_cache = (k, v)
+        cache_len = start_pos + seq_len
+        if cache is None:
+            capacity = max(max_cache_len or cache_len, cache_len)
+            cache_k = torch.empty(
+                batch,
+                self.num_kv_heads,
+                capacity,
+                self.head_dim,
+                device=x.device,
+                dtype=k.dtype,
+            )
+            cache_v = torch.empty_like(cache_k)
+        else:
+            cache_k, cache_v, _ = cache
+            if cache_len > cache_k.size(2):
+                raise ValueError(f"KV cache capacity {cache_k.size(2)} is smaller than required length {cache_len}")
+        cache_k[:, :, start_pos:cache_len, :] = k
+        cache_v[:, :, start_pos:cache_len, :] = v
+        next_cache = (cache_k, cache_v, cache_len)
 
-        attn_k = k
-        attn_v = v
+        attn_k = cache_k[:, :, :cache_len, :]
+        attn_v = cache_v[:, :, :cache_len, :]
         if self.num_kv_heads != self.num_heads:
             repeats = self.num_heads // self.num_kv_heads
             attn_k = attn_k.repeat_interleave(repeats, dim=1)
@@ -255,10 +272,11 @@ class ModernTransformerBlock(nn.Module):
     def forward_cached(
         self,
         x: torch.Tensor,
-        cache: tuple[torch.Tensor, torch.Tensor] | None,
+        cache: KVCache | None,
         start_pos: int,
-    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
-        attn_out, next_cache = self.attn.forward_cached(self.attn_norm(x), cache, start_pos)
+        max_cache_len: int | None = None,
+    ) -> tuple[torch.Tensor, KVCache]:
+        attn_out, next_cache = self.attn.forward_cached(self.attn_norm(x), cache, start_pos, max_cache_len)
         x = x + self.dropout(attn_out)
         x = x + self.dropout(self.ffn(self.ffn_norm(x)))
         return x, next_cache
@@ -317,15 +335,16 @@ class ModernMusicTransformer(nn.Module):
     def forward_cached(
         self,
         tokens: torch.Tensor,
-        caches: list[tuple[torch.Tensor, torch.Tensor] | None] | None = None,
+        caches: list[KVCache | None] | None = None,
         start_pos: int = 0,
-    ) -> tuple[torch.Tensor, list[tuple[torch.Tensor, torch.Tensor]]]:
+        max_cache_len: int | None = None,
+    ) -> tuple[torch.Tensor, list[KVCache]]:
         if caches is None:
             caches = [None] * len(self.layers)
         x = self.embed_dropout(self.embedding(tokens))
         next_caches = []
         for layer, cache in zip(self.layers, caches, strict=True):
-            x, next_cache = layer.forward_cached(x, cache, start_pos)
+            x, next_cache = layer.forward_cached(x, cache, start_pos, max_cache_len)
             next_caches.append(next_cache)
         return self.fc_out(self.ln_f(x)), next_caches
 

@@ -26,6 +26,103 @@ Training/inference details:
 - optional full-sequence ONNX export path
 - optional CPU int8 inference path in the app
 
+## References
+
+These are papers and projects that inspired this implementation. This repository is not a faithful reproduction of any one paper; it combines a decoder-only Transformer music model with REMI-style tokenization and modern Transformer components.
+
+- [Attention Is All You Need](https://arxiv.org/abs/1706.03762) introduced the Transformer architecture.
+- [Music Transformer](https://arxiv.org/abs/1809.04281) motivated Transformer-based symbolic music generation with long-range structure.
+- [Enabling Factorized Piano Music Modeling and Generation with the MAESTRO Dataset](https://arxiv.org/abs/1810.12247) introduced the MAESTRO piano dataset used by this project.
+- [Pop Music Transformer](https://arxiv.org/abs/2002.00212) introduced REMI-style beat-based event tokenization for expressive piano generation.
+- [RoFormer](https://arxiv.org/abs/2104.09864) introduced rotary position embeddings.
+- [GQA](https://aclanthology.org/2023.emnlp-main.298/) introduced grouped-query attention.
+- [Root Mean Square Layer Normalization](https://papers.neurips.cc/paper/9403-root-mean-square-layer-normalization) introduced RMSNorm.
+- [GLU Variants Improve Transformer](https://arxiv.org/abs/2002.05202) introduced SwiGLU-style feed-forward variants.
+- [Muon](https://github.com/KellerJordan/Muon) is the optimizer implementation this project follows.
+
+<details>
+<summary>BibTeX</summary>
+
+```bibtex
+@inproceedings{vaswani2017attention,
+  title = {Attention Is All You Need},
+  author = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N. and Kaiser, Lukasz and Polosukhin, Illia},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume = {30},
+  year = {2017},
+  url = {https://arxiv.org/abs/1706.03762}
+}
+
+@inproceedings{huang2019music,
+  title = {Music Transformer},
+  author = {Huang, Cheng-Zhi Anna and Vaswani, Ashish and Uszkoreit, Jakob and Shazeer, Noam and Simon, Ian and Hawthorne, Curtis and Dai, Andrew M. and Hoffman, Matthew D. and Dinculescu, Monica and Eck, Douglas},
+  booktitle = {International Conference on Learning Representations},
+  year = {2019},
+  url = {https://arxiv.org/abs/1809.04281}
+}
+
+@inproceedings{hawthorne2019enabling,
+  title = {Enabling Factorized Piano Music Modeling and Generation with the MAESTRO Dataset},
+  author = {Hawthorne, Curtis and Stasyuk, Andriy and Roberts, Adam and Simon, Ian and Huang, Cheng-Zhi Anna and Dieleman, Sander and Elsen, Erich and Engel, Jesse and Eck, Douglas},
+  booktitle = {International Conference on Learning Representations},
+  year = {2019},
+  url = {https://arxiv.org/abs/1810.12247}
+}
+
+@inproceedings{huang2020pop,
+  title = {Pop Music Transformer: Beat-based Modeling and Generation of Expressive Pop Piano Compositions},
+  author = {Huang, Yu-Siang and Yang, Yi-Hsuan},
+  booktitle = {Proceedings of the 28th ACM International Conference on Multimedia},
+  year = {2020},
+  url = {https://arxiv.org/abs/2002.00212}
+}
+
+@article{su2021roformer,
+  title = {RoFormer: Enhanced Transformer with Rotary Position Embedding},
+  author = {Su, Jianlin and Lu, Yu and Pan, Shengfeng and Murtadha, Ahmed and Wen, Bo and Liu, Yunfeng},
+  journal = {arXiv preprint arXiv:2104.09864},
+  year = {2021},
+  url = {https://arxiv.org/abs/2104.09864}
+}
+
+@inproceedings{ainslie2023gqa,
+  title = {{GQA}: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints},
+  author = {Ainslie, Joshua and Lee-Thorp, James and de Jong, Michiel and Zemlyanskiy, Yury and Lebron, Federico and Sanghai, Sumit},
+  booktitle = {Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing},
+  pages = {4895--4901},
+  year = {2023},
+  publisher = {Association for Computational Linguistics},
+  doi = {10.18653/v1/2023.emnlp-main.298},
+  url = {https://aclanthology.org/2023.emnlp-main.298/}
+}
+
+@inproceedings{zhang2019root,
+  title = {Root Mean Square Layer Normalization},
+  author = {Zhang, Biao and Sennrich, Rico},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume = {32},
+  year = {2019},
+  url = {https://papers.neurips.cc/paper/9403-root-mean-square-layer-normalization}
+}
+
+@article{shazeer2020glu,
+  title = {{GLU} Variants Improve Transformer},
+  author = {Shazeer, Noam},
+  journal = {arXiv preprint arXiv:2002.05202},
+  year = {2020},
+  url = {https://arxiv.org/abs/2002.05202}
+}
+
+@misc{jordan2024muon,
+  title = {Muon: An optimizer for hidden layers in neural networks},
+  author = {Keller Jordan and Yuchen Jin and Vlado Boza and You Jiacheng and Franz Cesista and Laker Newhouse and Jeremy Bernstein},
+  year = {2024},
+  url = {https://kellerjordan.github.io/posts/muon/}
+}
+```
+
+</details>
+
 ## Install Dependencies
 
 ```bash

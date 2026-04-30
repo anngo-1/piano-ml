@@ -1,19 +1,21 @@
 # pianogen
 
-Unconditional piano generation with a compact decoder-only Transformer trained on MAESTRO MIDI.
+Messing around with a Transformer that generates piano music.
 
-The model predicts the next REMI token, decodes tokens back to MIDI, then renders browser-previewable audio for the dashboard. License: MIT.
+It trains on MAESTRO MIDI, predicts REMI tokens, turns them back into MIDI, and can render WAV audio in a small Gradio app.
 
 ## Model
 
-The default checkpoint is the 17.4M parameter REMI2048 model:
+Current model file:
 
 ```text
-checkpoint: models/remi-modern-2048-ft/best_model.pt
-config:     configs/config.json
-tokenizer:  REMI, 267 tokens
-context:    2048 tokens
-objective:  next-token prediction
+models/remi-modern-2048-ft/best_model.pt
+```
+
+Default config:
+
+```text
+configs/config.json
 ```
 
 Architecture:
@@ -23,32 +25,16 @@ Architecture:
 | `configs/config.json` | 17.4M | 8 | 384 | 6 | 2 | 1536 |
 | `configs/38m.json` | 38.2M | 10 | 512 | 8 | 2 | 2048 |
 
-Implementation details:
-
-- decoder-only causal Transformer
-- REMI tokenization with a 2048-token context
-- grouped-query attention
-- rotary position embeddings
-- RMSNorm
-- SwiGLU feed-forward blocks
-- tied input/output embeddings
-- PyTorch SDPA for training
-
-Validation PPL is only comparable within the same tokenizer and eval protocol. The 38.2M config is a scale preset, not a promoted checkpoint.
-
-## Results
-
-The released checkpoint is the 17.4M parameter REMI2048 model. The 38.2M parameter config is included for scale experiments, but it is not currently the default release.
+The model is a causal decoder-only Transformer with REMI tokens, RoPE, grouped-query attention, RMSNorm, SwiGLU, tied embeddings, and a 2048-token context.
 
 ## Inference
 
-Generation is unconditional. The sampler starts from the configured beginning token, autoregressively samples REMI tokens, decodes them to MIDI, then renders audio when using the dashboard.
+The app has two CPU modes:
 
-Runtime options:
+- `Fast`: quantized ONNX, quicker but can sound a little worse
+- `Quality`: FP32 ONNX
 
-- `Fast`: quantized cached ONNX token-step model; faster CPU inference, may sound slightly lower quality
-- `Quality`: FP32 cached ONNX token-step model
-- PyTorch: used by the CLI sampler and training code
+The CLI sampler uses PyTorch.
 
 ## Install
 
@@ -58,13 +44,15 @@ uv venv --system-site-packages .uv-venv
 uv pip install --python .uv-venv/bin/python -e ".[app]"
 ```
 
-CLI generation:
+## Run
+
+Generate MIDI:
 
 ```bash
 .uv-venv/bin/pianogen sample --output outputs/sample.mid
 ```
 
-Dashboard:
+Run the app:
 
 ```bash
 .uv-venv/bin/python app.py
@@ -72,37 +60,31 @@ Dashboard:
 
 Open `http://localhost:7860`.
 
-The dashboard exposes audio preview and WAV download. MIDI is generated internally for rendering.
-
 ## Train
-
-Prepare MAESTRO and train the 17.4M parameter model:
 
 ```bash
 .uv-venv/bin/pianogen --config configs/config.json prepare
 .uv-venv/bin/pianogen --config configs/config.json train
 ```
 
-Train the 38.2M parameter preset:
+Try the 38.2M config:
 
 ```bash
 .uv-venv/bin/pianogen --config configs/38m.json train
 ```
 
-## Hugging Face Space
+## Hugging Face
 
-`huggingface/space/` contains the inference-only Space files. Do not upload MAESTRO data, run logs, training outputs, or experiment artifacts to the Space.
+`huggingface/space/` has the files for the Gradio Space. Keep weights on Hugging Face, not in this repo.
 
-The released checkpoint is about 67 MB. Model weights should live on Hugging Face, not in the GitHub repo.
-
-## Repository Layout
+## Layout
 
 ```text
-app.py                  local dashboard launcher
-configs/                model/training configs
-huggingface/space/      Hugging Face Space files
-scripts/                command-line utilities
-src/                    package source
+app.py                  local app launcher
+configs/                configs
+huggingface/space/      files for the Space
+scripts/                utilities
+src/                    code
 ```
 
-Generated artifacts are ignored by default: `data/`, `models/`, `outputs/`, `runs/`, and rendered media.
+Ignored locally: `data/`, `models/`, `outputs/`, `runs/`, and rendered media.

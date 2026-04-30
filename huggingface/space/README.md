@@ -12,11 +12,9 @@ pinned: false
 
 # pianogen
 
-Unconditional piano generation with a 17.4M parameter REMI-token Transformer.
+Tiny piano generation demo.
 
-The app runs cached ONNX token-step inference server-side and returns an audio preview plus a downloadable WAV. MIDI is generated internally only.
-
-Expected checkpoint path:
+Expected model path:
 
 ```text
 models/remi-modern-2048-ft/best_model.pt

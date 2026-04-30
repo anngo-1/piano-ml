@@ -4,9 +4,9 @@ License: MIT
 
 Unconditional piano audio generation with a compact REMI-token Transformer.
 
-The repo is organized like a small research project: code in `src/`, current configs in `configs/`, utilities in `scripts/`, and a separate `huggingface/space/` folder for the demo files to upload to Hugging Face.
+The repo is organized like a compact research project: code in `src/`, current configs in `configs/`, utilities in `scripts/`, and a separate `huggingface/space/` folder for the demo files to upload to Hugging Face.
 
-## Model Sizes
+## Model
 
 ```text
 checkpoint: models/remi-modern-2048-ft/best_model.pt
@@ -18,13 +18,12 @@ val loss:   2.2208
 val PPL:    9.21
 ```
 
-`configs/config.json` is the default small model. Larger presets use the same REMI tokenizer, 2048-token context, GQA, RoPE, SwiGLU, RMSNorm, tied embeddings, cosine LR, and Muon optimizer.
+`configs/config.json` is the default 17.4M parameter model. The 38.2M parameter preset uses the same REMI tokenizer, 2048-token context, GQA, RoPE, SwiGLU, RMSNorm, tied embeddings, cosine LR, and Muon optimizer.
 
-| size | config | params | shape |
-| --- | --- | ---: | --- |
-| small | `configs/config.json` | 17.4M | 8 layers, 384 width, 6 heads |
-| big | `configs/big.json` | 38.2M | 10 layers, 512 width, 8 heads |
-| large | `configs/large.json` | 71.0M | 12 layers, 640 width, 10 heads |
+| config | params | shape |
+| --- | ---: | --- |
+| `configs/config.json` | 17.4M | 8 layers, 384 width, 6 heads |
+| `configs/38m.json` | 38.2M | 10 layers, 512 width, 8 heads |
 
 Perplexity is only comparable within the same tokenizer. Do not compare REMI PPL against the old raw event tokenizer or the failed BPE experiment.
 
@@ -71,18 +70,17 @@ On CPU, the dashboard exposes `Fast` and `Quality` modes. `Fast` uses the quanti
 
 ## Train
 
-Training is optional for users. The default command trains the current small REMI2048 model:
+Training is optional for users. The default command trains the current 17.4M parameter REMI2048 model:
 
 ```bash
 .uv-venv/bin/pianogen --config configs/config.json prepare
 .uv-venv/bin/pianogen --config configs/config.json train
 ```
 
-To scale up:
+To train the 38.2M parameter model:
 
 ```bash
-.uv-venv/bin/pianogen --config configs/big.json train
-.uv-venv/bin/pianogen --config configs/large.json train
+.uv-venv/bin/pianogen --config configs/38m.json train
 ```
 
 ## Inspect Generated MIDI
@@ -113,15 +111,15 @@ The checkpoint is about 67 MB. Approximate download time:
 app.py                  local dashboard launcher
 configs/                current configs only
 huggingface/space/      files to copy into a Hugging Face Space
-scripts/                small command-line utilities
+scripts/                focused command-line utilities
 src/                    package source
 ```
 
-Large artifacts are ignored by default: `data/`, `models/`, `outputs/`, `runs/`, and rendered media. Use Git LFS or Hugging Face for model checkpoints.
+Generated artifacts are ignored by default: `data/`, `models/`, `outputs/`, `runs/`, and rendered media. Use Git LFS or Hugging Face for model checkpoints.
 
 ## Notes
 
-The current recommended branch is plain REMI with the 2048-context fine-tune. The bigger configs are scale presets, not automatically better checkpoints.
+The current recommended branch is plain REMI with the 2048-context fine-tune. The 38.2M parameter config is a scale preset, not an automatically better checkpoint.
 
 ## Publish Checklist
 

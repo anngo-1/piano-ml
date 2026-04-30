@@ -120,8 +120,14 @@ class RotaryEmbedding(nn.Module):
         inv_freq = 1.0 / (theta ** (torch.arange(0, head_dim, 2).float() / head_dim))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
-    def forward(self, seq_len: int, device: torch.device, dtype: torch.dtype) -> tuple[torch.Tensor, torch.Tensor]:
-        positions = torch.arange(seq_len, device=device, dtype=self.inv_freq.dtype)
+    def forward(
+        self,
+        seq_len: int,
+        device: torch.device,
+        dtype: torch.dtype,
+        start_pos: int = 0,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        positions = torch.arange(start_pos, start_pos + seq_len, device=device, dtype=self.inv_freq.dtype)
         freqs = torch.outer(positions, self.inv_freq.to(device))
         emb = torch.repeat_interleave(freqs, repeats=2, dim=-1)
         cos = emb.cos().to(dtype=dtype)[None, None, :, :]
@@ -187,6 +193,42 @@ class ModernCausalSelfAttention(nn.Module):
         y = y.transpose(1, 2).contiguous().view(batch, seq_len, self.num_heads * self.head_dim)
         return self.out_proj(y)
 
+    def forward_cached(
+        self,
+        x: torch.Tensor,
+        cache: tuple[torch.Tensor, torch.Tensor] | None,
+        start_pos: int,
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        batch, seq_len, _ = x.shape
+        q = self.q_proj(x).view(batch, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        k = self.k_proj(x).view(batch, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        v = self.v_proj(x).view(batch, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        cos, sin = self.rope(seq_len, x.device, q.dtype, start_pos=start_pos)
+        q = _apply_rope(q, cos, sin)
+        k = _apply_rope(k, cos, sin)
+
+        if cache is not None:
+            past_k, past_v = cache
+            k = torch.cat((past_k, k), dim=2)
+            v = torch.cat((past_v, v), dim=2)
+        next_cache = (k, v)
+
+        attn_k = k
+        attn_v = v
+        if self.num_kv_heads != self.num_heads:
+            repeats = self.num_heads // self.num_kv_heads
+            attn_k = attn_k.repeat_interleave(repeats, dim=1)
+            attn_v = attn_v.repeat_interleave(repeats, dim=1)
+        y = F.scaled_dot_product_attention(
+            q,
+            attn_k,
+            attn_v,
+            dropout_p=0.0,
+            is_causal=False,
+        )
+        y = y.transpose(1, 2).contiguous().view(batch, seq_len, self.num_heads * self.head_dim)
+        return self.out_proj(y), next_cache
+
 
 class ModernTransformerBlock(nn.Module):
     def __init__(
@@ -209,6 +251,17 @@ class ModernTransformerBlock(nn.Module):
         x = x + self.dropout(self.attn(self.attn_norm(x)))
         x = x + self.dropout(self.ffn(self.ffn_norm(x)))
         return x
+
+    def forward_cached(
+        self,
+        x: torch.Tensor,
+        cache: tuple[torch.Tensor, torch.Tensor] | None,
+        start_pos: int,
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        attn_out, next_cache = self.attn.forward_cached(self.attn_norm(x), cache, start_pos)
+        x = x + self.dropout(attn_out)
+        x = x + self.dropout(self.ffn(self.ffn_norm(x)))
+        return x, next_cache
 
 
 class ModernMusicTransformer(nn.Module):
@@ -260,6 +313,21 @@ class ModernMusicTransformer(nn.Module):
         for layer in self.layers:
             x = layer(x)
         return self.fc_out(self.ln_f(x))
+
+    def forward_cached(
+        self,
+        tokens: torch.Tensor,
+        caches: list[tuple[torch.Tensor, torch.Tensor] | None] | None = None,
+        start_pos: int = 0,
+    ) -> tuple[torch.Tensor, list[tuple[torch.Tensor, torch.Tensor]]]:
+        if caches is None:
+            caches = [None] * len(self.layers)
+        x = self.embed_dropout(self.embedding(tokens))
+        next_caches = []
+        for layer, cache in zip(self.layers, caches, strict=True):
+            x, next_cache = layer.forward_cached(x, cache, start_pos)
+            next_caches.append(next_cache)
+        return self.fc_out(self.ln_f(x)), next_caches
 
 
 def count_parameters(model: nn.Module) -> int:

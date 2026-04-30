@@ -136,6 +136,21 @@ def generate_tokens(
     for token in tokens:
         grammar.observe(int(token))
 
+    if hasattr(model, "forward_cached"):
+        return generate_tokens_cached(
+            model,
+            tokens,
+            length,
+            temperature,
+            top_k,
+            top_p,
+            device,
+            pad_token=pad_token,
+            repetition_penalty=repetition_penalty,
+            constrained=constrained,
+            grammar=grammar,
+        )
+
     while len(tokens) < length:
         context = tokens[-seq_len:]
         x = torch.tensor([context], dtype=torch.long, device=device)
@@ -157,4 +172,48 @@ def generate_tokens(
         next_token = int(torch.multinomial(probs, 1).item())
         tokens.append(next_token)
         grammar.observe(next_token)
+    return tokens
+
+
+@torch.no_grad()
+def generate_tokens_cached(
+    model: torch.nn.Module,
+    tokens: list[int],
+    length: int,
+    temperature: float,
+    top_k: int,
+    top_p: float,
+    device: torch.device,
+    pad_token: int,
+    repetition_penalty: float,
+    constrained: bool,
+    grammar: RemiGrammarState | TokenGrammarState,
+) -> list[int]:
+    caches = None
+    position = 0
+    input_token = int(tokens[-1])
+
+    while len(tokens) < length:
+        x = torch.tensor([[input_token]], dtype=torch.long, device=device)
+        logits_batch, caches = model.forward_cached(x, caches, start_pos=position)
+        logits = logits_batch[0, -1]
+        allowed = grammar.allowed(device) if constrained else None
+        logits = filter_logits(
+            logits,
+            temperature,
+            top_k,
+            top_p,
+            pad_token,
+            repetition_penalty=repetition_penalty,
+            recent_tokens=tokens[-128:],
+            allowed_tokens=allowed,
+        )
+        probs = F.softmax(logits, dim=-1)
+        if torch.isnan(probs).any() or probs.sum() <= 0:
+            break
+        next_token = int(torch.multinomial(probs, 1).item())
+        tokens.append(next_token)
+        grammar.observe(next_token)
+        input_token = next_token
+        position += 1
     return tokens

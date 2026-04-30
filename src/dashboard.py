@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import inspect
 import os
 import shutil
 import subprocess
 import tempfile
+import time
 import wave
 from pathlib import Path
 
@@ -109,6 +111,7 @@ def generate(
     repetition_penalty: float,
     seed: int,
 ):
+    started = time.perf_counter()
     config, model, device = load_model()
     seed_everything(int(seed))
     tokens = generate_tokens(
@@ -132,9 +135,11 @@ def generate(
     render_audio(midi, midi_path, wav_path)
     note_count = sum(len(inst.notes) for inst in midi.instruments)
     renderer = "FluidSynth" if shutil.which("fluidsynth") and SOUNDFONT_PATH.exists() else "pretty_midi"
+    elapsed = time.perf_counter() - started
     summary = (
         f"Generated {len(tokens)} tokens, {note_count} notes, "
-        f"duration {midi.get_end_time():.2f}s on {device.type}. Audio renderer: {renderer}."
+        f"audio duration {midi.get_end_time():.2f}s on {device.type} in {elapsed:.1f}s. "
+        f"Audio renderer: {renderer}."
     )
     return str(wav_path), str(wav_path), summary
 
@@ -166,11 +171,13 @@ with gr.Blocks(title="pianogen") as demo:
     )
 
 def launch() -> None:
-    load_model()
-    demo.launch(
-        server_name=os.getenv("GRADIO_SERVER_NAME", "0.0.0.0"),
-        server_port=int(os.getenv("GRADIO_SERVER_PORT", "7860")),
-    )
+    kwargs = {
+        "server_name": os.getenv("GRADIO_SERVER_NAME", "0.0.0.0"),
+        "server_port": int(os.getenv("GRADIO_SERVER_PORT", "7860")),
+    }
+    if "ssr_mode" in inspect.signature(demo.launch).parameters:
+        kwargs["ssr_mode"] = False
+    demo.launch(**kwargs)
 
 
 if __name__ == "__main__":

@@ -1,20 +1,19 @@
 .PHONY: install app sample train prepare hf-files
 
 install:
-	uv pip install --python .uv-venv/bin/python -e .
+	uv sync --extra app
 
 app:
-	uv pip install --python .uv-venv/bin/python -e ".[app]"
-	.uv-venv/bin/python app.py
+	uv run python app.py
 
 sample:
-	.uv-venv/bin/pianogen sample --output outputs/sample.mid
+	uv run python -m src.generate --output outputs/sample.mid
 
 prepare:
-	.uv-venv/bin/pianogen prepare
+	uv run python -m src.data --config configs/config.json
 
 train:
-	.uv-venv/bin/pianogen train
+	uv run python -m src.train --config configs/config.json
 
 hf-files:
 	find huggingface/space -maxdepth 4 -type f | sort

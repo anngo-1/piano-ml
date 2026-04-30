@@ -40,8 +40,7 @@ The local sampler uses PyTorch.
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv --system-site-packages .uv-venv
-uv pip install --python .uv-venv/bin/python -e ".[app]"
+uv sync --extra app
 ```
 
 ## Run

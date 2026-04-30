@@ -33,6 +33,27 @@ def remi_token_end() -> int:
     return REMI_TOKEN_END
 
 
+def remi_token_label(token: int) -> str:
+    token = int(token)
+    if token == REMI_BAR:
+        return "BAR"
+    if REMI_POS_START <= token < REMI_PITCH_START:
+        return f"POS_{token - REMI_POS_START}"
+    if REMI_PITCH_START <= token < REMI_DUR_START:
+        return f"PITCH_{REMI_PITCH_MIN + token - REMI_PITCH_START}"
+    if REMI_DUR_START <= token < REMI_VEL_START:
+        return f"DUR_{token - REMI_DUR_START + 1}"
+    if REMI_VEL_START <= token < REMI_TOKEN_END:
+        velocity_idx = token - REMI_VEL_START
+        velocity = max(1, min(127, int(round((velocity_idx / float(REMI_VELOCITY_BINS - 1)) * 126.0)) + 1))
+        return f"VEL_{velocity}"
+    if token == REMI_TOKEN_END:
+        return "END"
+    if token == REMI_TOKEN_PAD:
+        return "PAD"
+    return f"TOKEN_{token}"
+
+
 def _estimate_bpm(midi: pretty_midi.PrettyMIDI) -> float:
     _, tempi = midi.get_tempo_changes()
     if len(tempi):

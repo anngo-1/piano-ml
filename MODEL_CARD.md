@@ -50,6 +50,6 @@ Validation PPL depends on the eval protocol. Use it only for same-tokenizer, sam
 - Audio quality depends on the renderer/soundfont, not only the model.
 - The model may reproduce stylistic patterns from MAESTRO-like classical piano performances.
 
-## Failed Branches
+## Notes
 
-REMI+BPE512 was tested and sounded poor. The current recommended branch is plain REMI with the 2048-context fine-tune.
+The current recommended branch is plain REMI with the 2048-context fine-tune.

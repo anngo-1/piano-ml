@@ -7,7 +7,6 @@ import torch
 from .config import TrainConfig
 from .midi import decode_midi
 from .remi import decode_midi_remi
-from .remi_bpe import decode_midi_remi_bpe
 from .sample import generate_tokens
 from .train import build_model
 
@@ -45,8 +44,6 @@ def generate(config: TrainConfig, checkpoint: str | Path, output: str | Path | N
     )
     if config.tokenizer == "remi":
         midi = decode_midi_remi(tokens, output_path)
-    elif config.tokenizer == "remi_bpe":
-        midi = decode_midi_remi_bpe(tokens, output_path, config.bpe_path)
     else:
         midi = decode_midi(tokens, output_path)
     print(f"wrote {output_path} duration={midi.get_end_time():.2f}s tokens={len(tokens)}")

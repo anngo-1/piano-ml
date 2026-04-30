@@ -36,6 +36,10 @@ Implementation details:
 
 Validation PPL is only comparable within the same tokenizer and eval protocol. The 38.2M config is a scale preset, not a promoted checkpoint.
 
+## Results
+
+The released checkpoint is the 17.4M parameter REMI2048 model. The 38.2M parameter config is included for scale experiments, but it is not currently the default release.
+
 ## Inference
 
 Generation is unconditional. The sampler starts from the configured beginning token, autoregressively samples REMI tokens, decodes them to MIDI, then renders audio when using the dashboard.

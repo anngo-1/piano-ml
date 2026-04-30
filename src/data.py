@@ -17,7 +17,6 @@ from tqdm import tqdm
 from .config import TrainConfig
 from .midi import encode_midi, encode_midi_with_random_transpose
 from .remi import encode_midi_remi
-from .remi_bpe import encode_bpe_tokens, learn_bpe, load_sequences, save_bpe
 
 
 def download_maestro(config: TrainConfig) -> Path:
@@ -105,47 +104,6 @@ def preprocess_split(
     return count
 
 
-def prepare_remi_bpe(config: TrainConfig, overwrite: bool = False) -> None:
-    source_dir = Path(config.bpe_source_dir)
-    train_source = source_dir / "train"
-    validation_source = source_dir / "validation"
-    if not train_source.exists() or not validation_source.exists():
-        raise FileNotFoundError(
-            f"REMI source data not found in {source_dir}. Run prepare with tokenizer='remi' first."
-        )
-
-    if overwrite and config.processed_dir.exists():
-        shutil.rmtree(config.processed_dir)
-    config.processed_dir.mkdir(parents=True, exist_ok=True)
-
-    if overwrite or not Path(config.bpe_path).exists():
-        print(f"learning REMI BPE vocab_size={config.bpe_vocab_size} from {train_source}", flush=True)
-        train_sequences = load_sequences(train_source)
-        if config.bpe_train_files_limit is not None:
-            train_sequences = train_sequences[: config.bpe_train_files_limit]
-        payload = learn_bpe(train_sequences, config.bpe_vocab_size)
-        save_bpe(payload, config.bpe_path)
-    else:
-        import json
-        payload = json.loads(Path(config.bpe_path).read_text())
-
-    for split, split_source in (("train", train_source), ("validation", validation_source)):
-        split_out = config.processed_dir / split
-        if overwrite and split_out.exists():
-            shutil.rmtree(split_out)
-        split_out.mkdir(parents=True, exist_ok=True)
-        existing = list(split_out.glob("*.pickle"))
-        source_files = sorted(split_source.glob("*.pickle"))
-        if existing and len(existing) >= max(1, int(0.9 * len(source_files))):
-            continue
-        for path in tqdm(source_files, desc=f"BPE encoding {split}"):
-            with path.open("rb") as f:
-                tokens = pickle.load(f)
-            encoded = encode_bpe_tokens(tokens, payload["merges"])
-            with (split_out / path.name).open("wb") as f:
-                pickle.dump(encoded, f)
-
-
 class MusicTokenDataset(Dataset):
     def __init__(self, data_dir: str | Path, seq_len: int, pad_token: int, files_limit: int | None = None):
         self.seq_len = seq_len
@@ -185,9 +143,6 @@ class MusicTokenDataset(Dataset):
 
 
 def prepare_maestro(config: TrainConfig, overwrite: bool = False) -> None:
-    if config.tokenizer == "remi_bpe":
-        prepare_remi_bpe(config, overwrite=overwrite)
-        return
     dataset_dir = download_maestro(config)
     metadata = load_metadata(dataset_dir)
     preprocess_split(metadata, dataset_dir, "train", config.processed_dir, config.num_workers, overwrite, config.tokenizer)

@@ -43,10 +43,6 @@ class TrainConfig:
     data_dir: Path = Path("data")
     processed_dir: Path = Path("data/processed_maestro")
     tokenizer: str = "event"
-    bpe_path: Path = Path("models/remi_bpe_1024.json")
-    bpe_source_dir: Path = Path("data/processed_maestro_remi")
-    bpe_vocab_size: int = 1024
-    bpe_train_files_limit: int | None = None
     models_dir: Path = Path("models")
     output_dir: Path = Path("outputs")
     maestro_url: str = "https://storage.googleapis.com/magentadata/datasets/maestro/v3.0.0/maestro-v3.0.0-midi.zip"
@@ -90,15 +86,10 @@ def load_config(path: str | Path) -> TrainConfig:
     model = ModelConfig(**raw.pop("model", {}))
     sampling = SamplingConfig(**raw.pop("sampling", {}))
     cfg = TrainConfig(**raw, model=model, sampling=sampling)
-    for key in ("data_dir", "processed_dir", "models_dir", "output_dir", "bpe_source_dir"):
+    for key in ("data_dir", "processed_dir", "models_dir", "output_dir"):
         setattr(cfg, key, _coerce_path(getattr(cfg, key)))
-    cfg.bpe_path = _coerce_path(cfg.bpe_path)
     if cfg.tokenizer == "remi":
         cfg.vocab_size = REMI_VOCAB_SIZE
-        cfg.token_pad = REMI_TOKEN_PAD
-        cfg.token_end = REMI_TOKEN_END
-    elif cfg.tokenizer == "remi_bpe":
-        cfg.vocab_size = cfg.bpe_vocab_size
         cfg.token_pad = REMI_TOKEN_PAD
         cfg.token_end = REMI_TOKEN_END
     elif cfg.tokenizer != "event":

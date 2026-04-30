@@ -12,9 +12,9 @@ pinned: false
 
 # pianogen
 
-Unconditional piano audio generation with a REMI-token Transformer.
+Unconditional piano generation with a 17.4M parameter REMI-token Transformer.
 
-The app runs model inference server-side and returns an audio preview plus a downloadable WAV. MIDI is generated internally only.
+The app runs cached ONNX token-step inference server-side and returns an audio preview plus a downloadable WAV. MIDI is generated internally only.
 
 Expected checkpoint path:
 

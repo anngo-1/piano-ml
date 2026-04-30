@@ -1,8 +1,6 @@
 # Hugging Face Packaging
 
-This directory is a staging area for publishing the browser demo to Hugging Face Spaces.
-
-The Hugging Face Space should be inference-only. Do not copy training data, run logs, generated experiment outputs, or evaluation scripts into the Space.
+This directory stages the browser demo for Hugging Face Spaces. The Space should stay inference-only: no MAESTRO data, run logs, generated outputs, or evaluation scripts.
 
 Recommended setup:
 
@@ -15,7 +13,7 @@ Recommended setup:
 models/remi-modern-2048-ft/best_model.pt
 ```
 
-The Space UI serves audio only: browser preview plus downloadable WAV. MIDI is generated internally for rendering and is not exposed in the UI.
+The Space UI serves audio only: browser preview plus downloadable WAV. `Fast` uses quantized cached ONNX and may sound slightly lower quality; `Quality` uses the FP32 cached ONNX model.
 
 The checkpoint is about 67 MB. Approximate download time:
 

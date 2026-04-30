@@ -2,7 +2,7 @@
 
 ## Summary
 
-`pianogen` is an unconditional symbolic piano generator trained on MAESTRO MIDI. It generates REMI-style tokens and decodes them to piano MIDI; the dashboard renders audio from the generated MIDI and exposes a WAV preview/download.
+`pianogen` is an unconditional symbolic piano generator trained on MAESTRO MIDI. It predicts REMI tokens, decodes them to piano MIDI, and renders WAV audio for the dashboard.
 
 ## Model
 
@@ -17,11 +17,14 @@ context:    2048 tokens
 Architecture:
 
 - decoder-only Transformer
-- RoPE positional encoding
+- 2048-token causal context
+- grouped-query attention, 6 query heads and 2 KV heads
+- rotary position embeddings
 - RMSNorm
 - SwiGLU MLP
-- grouped-query attention
+- tied input/output embeddings
 - PyTorch scaled-dot-product attention
+- cached ONNX token-step inference for CPU dashboard serving
 
 ## Training Data
 
@@ -31,12 +34,7 @@ Architecture:
 
 ## Metrics
 
-```text
-validation loss: 2.2208
-validation PPL:  9.21
-```
-
-PPL is only comparable against models trained with the same tokenizer and validation setup.
+Validation PPL depends on the eval protocol. Use it only for same-tokenizer, same-scorer comparisons.
 
 ## Intended Use
 

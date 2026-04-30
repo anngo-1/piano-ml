@@ -95,7 +95,7 @@ class OnnxCachedGenerator:
         self.config = config
         self.model_path = Path(model_path)
         options = ort.SessionOptions()
-        options.intra_op_num_threads = _env_int("PIANOGEN_ONNX_THREADS", 1)
+        options.intra_op_num_threads = _env_int("PIANOGEN_ONNX_THREADS", 4)
         options.inter_op_num_threads = 1
         options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL

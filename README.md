@@ -196,7 +196,27 @@ uv run python -m src.render outputs/sample.mid --output outputs/sample.wav
 
 `src.render` uses FluidSynth when it is installed. Otherwise it falls back to `pretty_midi` synthesis, which is lower quality.
 
-PyTorch generation uses a KV cache. `src.export` exports a full-sequence ONNX model for standard ONNX Runtime inference. The app can also load cached ONNX Runtime step models named `models/remi-17m/step.onnx` or `models/remi-17m/step-int8.onnx` when those files are supplied separately; this repo does not currently include an exporter for those cached step models. The CPU int8 path is intended for faster CPU serving and can sound slightly worse than FP32.
+PyTorch generation uses a KV cache. `src.export` exports a full-sequence ONNX model for standard ONNX Runtime inference. The app also loads cached ONNX Runtime step models named `models/remi-17m/step.onnx` or `models/remi-17m/step-int8.onnx` when those files are present. The CPU int8 path is intended for faster CPU serving and can sound slightly worse than FP32.
+
+If you are running locally and just want to use the app, pull the published model artifacts from the Hugging Face Space:
+
+```bash
+uv run --with huggingface_hub python - <<'PY'
+from huggingface_hub import snapshot_download
+
+snapshot_download(
+    repo_id="anngo-1/piano-ml",
+    repo_type="space",
+    local_dir=".",
+    allow_patterns=[
+        "models/remi-17m/best_model.pt",
+        "models/remi-17m/step-int8.onnx",
+        "models/remi-17m/step.onnx",
+        "models/remi-17m/step.onnx.data",
+    ],
+)
+PY
+```
 
 Optional audio UI, for listening to generated samples:
 

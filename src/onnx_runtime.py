@@ -100,10 +100,13 @@ class OnnxCachedGenerator:
         options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self.session = ort.InferenceSession(str(self.model_path), sess_options=options, providers=["CPUExecutionProvider"])
-        self.input_names = [item.name for item in self.session.get_inputs()]
+        inputs = self.session.get_inputs()
+        self.input_names = [item.name for item in inputs]
         self.head_dim = config.model.d_model // config.model.num_heads
         self.num_kv_heads = config.model.num_kv_heads or config.model.num_heads
         self.num_cache_tensors = config.model.num_layers * 2
+        cache_shape = inputs[2].shape if len(inputs) > 2 else []
+        self.fixed_cache_len = cache_shape[2] if len(cache_shape) > 2 and isinstance(cache_shape[2], int) else 0
 
     def generate(
         self,
@@ -119,8 +122,13 @@ class OnnxCachedGenerator:
         for token in tokens:
             expect = _observe_remi(expect, int(token))
 
+        cache_len = self.fixed_cache_len
+        if cache_len:
+            length = min(length, cache_len)
         caches = [
-            np.empty((1, self.num_kv_heads, 0, self.head_dim), dtype=np.float32)
+            np.zeros((1, self.num_kv_heads, cache_len, self.head_dim), dtype=np.float32)
+            if cache_len
+            else np.empty((1, self.num_kv_heads, 0, self.head_dim), dtype=np.float32)
             for _ in range(self.num_cache_tensors)
         ]
         while len(tokens) < length:

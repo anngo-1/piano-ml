@@ -228,7 +228,7 @@ with gr.Blocks(title="pianogen") as demo:
     with gr.Row():
         runtime_mode = gr.Radio(["Fast", "Quality"], value="Fast", label="Runtime")
         preset = gr.Dropdown(list(PRESETS), value="Balanced", label="Preset")
-        length = gr.Slider(256, 3072, value=1024, step=128, label="Generation tokens")
+        length = gr.Slider(256, 2048, value=1024, step=128, label="Generation tokens")
         seed = gr.Number(value=-1, precision=0, label="Seed (-1 random)")
     gr.Markdown(
         "Fast uses quantized ONNX when cached step files are present. "

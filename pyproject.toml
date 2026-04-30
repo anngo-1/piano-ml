@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-onnx = ["onnx>=1.15", "onnxruntime>=1.17"]
+onnx = ["onnx>=1.15", "onnxruntime>=1.17", "onnxscript>=0.1"]
 app = ["gradio>=5.0"]
 
 [tool.setuptools.packages.find]

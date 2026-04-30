@@ -22,14 +22,36 @@ def zeropower_via_newtonschulz5(g: torch.Tensor, steps: int = 5) -> torch.Tensor
     return x.reshape(original_shape).type_as(g)
 
 
+def muon_update(grad: torch.Tensor, momentum: torch.Tensor, beta: float, ns_steps: int, nesterov: bool) -> torch.Tensor:
+    momentum.lerp_(grad, 1.0 - beta)
+    update = grad.lerp(momentum, beta) if nesterov else momentum
+    update = zeropower_via_newtonschulz5(update, steps=ns_steps)
+    rows, cols = update.shape[0], update.numel() // update.shape[0]
+    return update * math.sqrt(max(1.0, rows / cols))
+
+
 class Muon(torch.optim.Optimizer):
     """Muon optimizer for matrix-shaped hidden weights.
 
     Use AdamW for embeddings, output heads, biases, and normalization weights.
     """
 
-    def __init__(self, params, lr: float = 0.02, momentum: float = 0.95, weight_decay: float = 0.0, ns_steps: int = 5):
-        defaults = dict(lr=lr, momentum=momentum, weight_decay=weight_decay, ns_steps=ns_steps)
+    def __init__(
+        self,
+        params,
+        lr: float = 0.02,
+        momentum: float = 0.95,
+        weight_decay: float = 0.0,
+        ns_steps: int = 5,
+        nesterov: bool = True,
+    ):
+        defaults = dict(
+            lr=lr,
+            momentum=momentum,
+            weight_decay=weight_decay,
+            ns_steps=ns_steps,
+            nesterov=nesterov,
+        )
         super().__init__(params, defaults)
 
     @torch.no_grad()
@@ -43,6 +65,7 @@ class Muon(torch.optim.Optimizer):
             momentum = group["momentum"]
             weight_decay = group["weight_decay"]
             ns_steps = group["ns_steps"]
+            nesterov = group["nesterov"]
             for p in group["params"]:
                 if p.grad is None:
                     continue
@@ -53,11 +76,7 @@ class Muon(torch.optim.Optimizer):
                 if "momentum_buffer" not in state:
                     state["momentum_buffer"] = torch.zeros_like(p)
                 buf = state["momentum_buffer"]
-                buf.mul_(momentum).add_(grad)
-                update = zeropower_via_newtonschulz5(buf, steps=ns_steps)
-                if p.ndim >= 2:
-                    rows, cols = p.shape[0], p.numel() // p.shape[0]
-                    update = update * math.sqrt(max(1.0, rows / cols))
+                update = muon_update(grad, buf, beta=momentum, ns_steps=ns_steps, nesterov=nesterov)
                 p.add_(update, alpha=-lr)
         return loss
 

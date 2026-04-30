@@ -1,3 +1,0 @@
-Put best_model.pt in this directory with Git LFS:
-
-models/remi-17m/best_model.pt

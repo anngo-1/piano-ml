@@ -77,6 +77,5 @@ uv run python -m src.train --config configs/38m.json
 ```text
 app.py                  local app launcher
 configs/                configs
-huggingface/space/      files for the Space
 src/                    code
 ```

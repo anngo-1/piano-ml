@@ -43,6 +43,107 @@ PRESETS = {
     "Creative": {"temperature": 1.18, "top_k": 110, "top_p": 0.96, "repetition_penalty": 1.09, "seed": -1},
 }
 
+AUDIO_RESET_HEAD = """
+<script>
+(() => {
+  const playerSelector = "#piano-ml-audio audio";
+
+  function audioSource(audio) {
+    return audio.currentSrc || audio.src || "";
+  }
+
+  function resetPosition(audio, shouldPause) {
+    if (!audio) {
+      return;
+    }
+    if (shouldPause) {
+      try {
+        audio.pause();
+      } catch (error) {
+        // Some mobile browsers can throw while media metadata is changing.
+      }
+    }
+    try {
+      audio.currentTime = 0;
+    } catch (error) {
+      // Reset again when metadata is available.
+    }
+  }
+
+  function markNewSource(audio) {
+    const source = audioSource(audio);
+    if (!source || source === audio.dataset.pianoMlLastSource) {
+      return;
+    }
+    audio.dataset.pianoMlLastSource = source;
+    audio.dataset.pianoMlResetOnPlay = "1";
+    resetPosition(audio, false);
+  }
+
+  function bindAudio(audio) {
+    if (!audio || audio.dataset.pianoMlResetBound === "1") {
+      return;
+    }
+    audio.dataset.pianoMlResetBound = "1";
+    audio.dataset.pianoMlLastSource = "";
+    audio.dataset.pianoMlResetOnPlay = "0";
+    audio.addEventListener("loadstart", () => markNewSource(audio));
+    audio.addEventListener("loadedmetadata", () => markNewSource(audio));
+    audio.addEventListener("play", () => {
+      if (audio.dataset.pianoMlResetOnPlay !== "1") {
+        return;
+      }
+      audio.dataset.pianoMlResetOnPlay = "0";
+      resetPosition(audio, false);
+    });
+    markNewSource(audio);
+  }
+
+  function bindGeneratedAudio() {
+    document.querySelectorAll(playerSelector).forEach(bindAudio);
+  }
+
+  window.pianoMlResetGeneratedAudio = () => {
+    document.querySelectorAll(playerSelector).forEach((audio) => {
+      resetPosition(audio, true);
+      audio.dataset.pianoMlLastSource = audioSource(audio);
+      audio.dataset.pianoMlResetOnPlay = "1";
+      try {
+        audio.load();
+      } catch (error) {
+        // The server-side clear step will still replace the source.
+      }
+    });
+  };
+
+  function start() {
+    bindGeneratedAudio();
+    if (document.body) {
+      new MutationObserver(bindGeneratedAudio).observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start, { once: true });
+  } else {
+    start();
+  }
+})();
+</script>
+"""
+
+AUDIO_RESET_ON_GENERATE_JS = """
+() => {
+  if (window.pianoMlResetGeneratedAudio) {
+    window.pianoMlResetGeneratedAudio();
+  }
+  return [null, null, ""];
+}
+"""
+
 
 def _onnx_path_for_mode(runtime_mode: str) -> tuple[Path, str]:
     if runtime_mode == "Quality":
@@ -302,11 +403,12 @@ def generate_stream(
     yield audio_path, str(wav_path), final_progress
 
 
-with gr.Blocks(title="piano-ml") as demo:
+with gr.Blocks(title="piano-ml", head=AUDIO_RESET_HEAD) as demo:
     gr.Markdown(
         "# piano-ml\n"
-        "Generate piano music with the 17M REMI-token Transformer. "
-        "Audio is rendered as acoustic grand piano with the bundled GeneralUser GS SoundFont."
+        "Sample short piano pieces from a 17M-parameter decoder-only model trained on REMI-style event tokens. "
+        "Audio is rendered as acoustic grand piano with the bundled GeneralUser GS SoundFont. "
+        "Code: [GitHub](https://github.com/anngo-1/piano-ml)."
     )
     with gr.Row():
         runtime_mode = gr.Radio(["Fast", "Quality"], value="Fast", label="Runtime")
@@ -325,12 +427,19 @@ with gr.Blocks(title="piano-ml") as demo:
     preset.change(apply_preset, inputs=preset, outputs=[temperature, top_k, top_p, repetition_penalty, seed])
     button = gr.Button("Generate", variant="primary")
     progress = gr.Textbox(label="Progress", interactive=False)
-    audio = gr.Audio(label="Audio preview", type="filepath", interactive=False, autoplay=True)
+    audio = gr.Audio(
+        label="Audio preview",
+        type="filepath",
+        interactive=False,
+        autoplay=True,
+        elem_id="piano-ml-audio",
+    )
     wav_file = gr.File(label="Download WAV")
     button.click(
         clear_outputs,
         outputs=[audio, wav_file, progress],
         queue=False,
+        js=AUDIO_RESET_ON_GENERATE_JS,
     ).then(
         generate_stream,
         inputs=[runtime_mode, preset, length, temperature, top_k, top_p, repetition_penalty, seed],

@@ -27,11 +27,19 @@ def _apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.
     return (x * cos) + (_rotate_half(x) * sin)
 
 
-def _grouped_query_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, groups: int) -> torch.Tensor:
+def _grouped_query_attention(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    groups: int,
+    attn_mask: torch.Tensor | None = None,
+) -> torch.Tensor:
     batch, num_heads, seq_len, head_dim = q.shape
     num_kv_heads = k.size(1)
     q = q.view(batch, num_kv_heads, groups, seq_len, head_dim)
     scores = torch.einsum("bhgld,bhsd->bhgls", q, k) * (head_dim ** -0.5)
+    if attn_mask is not None:
+        scores = scores.masked_fill(~attn_mask.view(1, 1, 1, seq_len, k.size(2)), -float("inf"))
     weights = torch.softmax(scores, dim=-1)
     y = torch.einsum("bhgls,bhsd->bhgld", weights, v)
     return y.reshape(batch, num_heads, seq_len, head_dim)
@@ -155,14 +163,20 @@ class CausalSelfAttention(nn.Module):
 
         attn_k = cache_k[:, :, :cache_len, :]
         attn_v = cache_v[:, :, :cache_len, :]
+        attn_mask = None
+        if seq_len > 1:
+            query_positions = torch.arange(start_pos, cache_len, device=x.device)
+            key_positions = torch.arange(cache_len, device=x.device)
+            attn_mask = key_positions.unsqueeze(0) <= query_positions.unsqueeze(1)
         if self.num_kv_heads != self.num_heads:
             repeats = self.num_heads // self.num_kv_heads
-            y = _grouped_query_attention(q, attn_k, attn_v, repeats)
+            y = _grouped_query_attention(q, attn_k, attn_v, repeats, attn_mask)
         else:
             y = F.scaled_dot_product_attention(
                 q,
                 attn_k,
                 attn_v,
+                attn_mask=attn_mask,
                 dropout_p=0.0,
                 is_causal=False,
             )

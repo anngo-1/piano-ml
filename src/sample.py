@@ -102,10 +102,12 @@ def generate_tokens(
     constrained: bool = True,
 ) -> list[int]:
     model.eval()
-    tokens = list(prompt)
+    tokens = list(prompt) or [REMI_BAR]
     grammar = RemiGrammarState()
     for token in tokens:
         grammar.observe(int(token))
+    if len(tokens) >= length:
+        return tokens[:length]
 
     if hasattr(model, "forward_cached"):
         return generate_tokens_cached(
@@ -162,12 +164,18 @@ def generate_tokens_cached(
 ) -> list[int]:
     caches = None
     position = 0
-    input_token = int(tokens[-1])
+    logits = None
 
-    while len(tokens) < length:
-        x = torch.tensor([[input_token]], dtype=torch.long, device=device)
+    for token in tokens:
+        x = torch.tensor([[int(token)]], dtype=torch.long, device=device)
         logits_batch, caches = model.forward_cached(x, caches, start_pos=position, max_cache_len=length)
         logits = logits_batch[0, -1]
+        position += 1
+
+    if logits is None:
+        return tokens
+
+    while len(tokens) < length:
         allowed = grammar.allowed(device) if constrained else None
         logits = filter_logits(
             logits,
@@ -185,6 +193,10 @@ def generate_tokens_cached(
         next_token = int(torch.multinomial(probs, 1).item())
         tokens.append(next_token)
         grammar.observe(next_token)
-        input_token = next_token
+        if len(tokens) >= length:
+            break
+        x = torch.tensor([[next_token]], dtype=torch.long, device=device)
+        logits_batch, caches = model.forward_cached(x, caches, start_pos=position, max_cache_len=length)
+        logits = logits_batch[0, -1]
         position += 1
     return tokens

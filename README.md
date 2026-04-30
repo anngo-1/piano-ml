@@ -8,14 +8,14 @@ The model is a causal decoder-only Transformer over REMI event tokens. It predic
 
 Architecture details:
 
-- 2048-token context window
+- 2048-token training/evaluation sequence length in the provided configs
 - rotary position embeddings
 - grouped-query self-attention
 - PyTorch scaled dot-product attention
 - RMSNorm
 - SwiGLU feed-forward blocks
 - tied token embedding / output projection
-- KV-cached autoregressive generation
+- KV-cached PyTorch autoregressive generation
 
 Training/inference details:
 
@@ -23,8 +23,8 @@ Training/inference details:
 - REMI tokenization
 - Muon optimizer
 - cosine learning-rate schedule
-- optional ONNX Runtime serving path
-- optional int8 CPU inference path
+- optional full-sequence ONNX export path
+- optional CPU int8 inference path in the app
 
 ## Install Dependencies
 
@@ -90,7 +90,7 @@ uv run python -m src.render outputs/sample.mid --output outputs/sample.wav
 
 `src.render` uses FluidSynth when it is installed. Otherwise it falls back to `pretty_midi` synthesis, which is lower quality.
 
-PyTorch generation uses a KV cache. The app code can also use ONNX Runtime step models when those files are present. The int8 CPU path is intended for faster CPU serving and can sound slightly worse than FP32.
+PyTorch generation uses a KV cache. `src.export` exports a full-sequence ONNX model for standard ONNX Runtime inference. The app can also load cached ONNX Runtime step models named `models/remi-17m/step.onnx` or `models/remi-17m/step-int8.onnx` when those files are supplied separately; this repo does not currently include an exporter for those cached step models. The CPU int8 path is intended for faster CPU serving and can sound slightly worse than FP32.
 
 Optional audio UI, for listening to generated samples:
 

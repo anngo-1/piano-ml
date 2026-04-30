@@ -1,4 +1,4 @@
-from src.dashboard import launch
+from src.dashboard import demo, launch
 
 
 if __name__ == "__main__":

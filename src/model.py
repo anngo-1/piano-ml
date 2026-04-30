@@ -114,6 +114,16 @@ def _apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.
     return (x * cos) + (_rotate_half(x) * sin)
 
 
+def _grouped_query_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, groups: int) -> torch.Tensor:
+    batch, num_heads, seq_len, head_dim = q.shape
+    num_kv_heads = k.size(1)
+    q = q.view(batch, num_kv_heads, groups, seq_len, head_dim)
+    scores = torch.einsum("bhgld,bhsd->bhgls", q, k) * (head_dim ** -0.5)
+    weights = torch.softmax(scores, dim=-1)
+    y = torch.einsum("bhgls,bhsd->bhgld", weights, v)
+    return y.reshape(batch, num_heads, seq_len, head_dim)
+
+
 class RotaryEmbedding(nn.Module):
     def __init__(self, head_dim: int, theta: float = 10000.0):
         super().__init__()
@@ -234,15 +244,15 @@ class ModernCausalSelfAttention(nn.Module):
         attn_v = cache_v[:, :, :cache_len, :]
         if self.num_kv_heads != self.num_heads:
             repeats = self.num_heads // self.num_kv_heads
-            attn_k = attn_k.repeat_interleave(repeats, dim=1)
-            attn_v = attn_v.repeat_interleave(repeats, dim=1)
-        y = F.scaled_dot_product_attention(
-            q,
-            attn_k,
-            attn_v,
-            dropout_p=0.0,
-            is_causal=False,
-        )
+            y = _grouped_query_attention(q, attn_k, attn_v, repeats)
+        else:
+            y = F.scaled_dot_product_attention(
+                q,
+                attn_k,
+                attn_v,
+                dropout_p=0.0,
+                is_causal=False,
+            )
         y = y.transpose(1, 2).contiguous().view(batch, seq_len, self.num_heads * self.head_dim)
         return self.out_proj(y), next_cache
 

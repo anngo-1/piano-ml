@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import warnings
 import wave
 from pathlib import Path
 
@@ -27,6 +28,13 @@ _MODEL: torch.nn.Module | None = None
 _DEVICE: torch.device | None = None
 _CONFIG = None
 
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
 PRESETS = {
     "Focused": {"temperature": 0.86, "top_k": 28, "top_p": 0.84, "repetition_penalty": 1.06, "seed": 31},
     "Balanced": {"temperature": 1.02, "top_k": 58, "top_p": 0.92, "repetition_penalty": 1.07, "seed": 47},
@@ -47,6 +55,11 @@ def load_model() -> tuple[object, torch.nn.Module, torch.device]:
     config = load_config(CONFIG_PATH)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = load_checkpoint(config, CHECKPOINT_PATH, device)
+    if device.type == "cpu" and _env_flag("PIANOGEN_QUANTIZE", True):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            model = torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+        setattr(model, "_pianogen_quantized", True)
     model.eval()
     _CONFIG, _MODEL, _DEVICE = config, model, device
     return config, model, device
@@ -136,9 +149,10 @@ def generate(
     note_count = sum(len(inst.notes) for inst in midi.instruments)
     renderer = "FluidSynth" if shutil.which("fluidsynth") and SOUNDFONT_PATH.exists() else "pretty_midi"
     elapsed = time.perf_counter() - started
+    runtime = f"{device.type}+int8" if getattr(model, "_pianogen_quantized", False) else device.type
     summary = (
         f"Generated {len(tokens)} tokens, {note_count} notes, "
-        f"audio duration {midi.get_end_time():.2f}s on {device.type} in {elapsed:.1f}s. "
+        f"audio duration {midi.get_end_time():.2f}s on {runtime} in {elapsed:.1f}s. "
         f"Audio renderer: {renderer}."
     )
     return str(wav_path), str(wav_path), summary

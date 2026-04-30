@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from .constants import RANGE_NOTE_OFF, RANGE_NOTE_ON, RANGE_TIME_SHIFT, RANGE_VELOCITY, TOKEN_END, TOKEN_PAD
 from .remi import REMI_BAR, REMI_DUR_START, REMI_PITCH_START, REMI_POS_START, REMI_TOKEN_END, REMI_VEL_START
 
+_REMI_ALLOWED_CACHE: dict[tuple[str, str], torch.Tensor] = {}
+
 
 def filter_logits(
     logits: torch.Tensor,
@@ -103,16 +105,25 @@ class RemiGrammarState:
             self.expect = "structure"
 
     def allowed(self, device: torch.device) -> torch.Tensor:
+        cache_key = (str(device), self.expect)
+        if cache_key in _REMI_ALLOWED_CACHE:
+            return _REMI_ALLOWED_CACHE[cache_key]
         if self.expect == "duration":
-            return torch.arange(REMI_DUR_START, REMI_VEL_START, device=device, dtype=torch.long)
+            allowed = torch.arange(REMI_DUR_START, REMI_VEL_START, device=device, dtype=torch.long)
+            _REMI_ALLOWED_CACHE[cache_key] = allowed
+            return allowed
         if self.expect == "velocity":
-            return torch.arange(REMI_VEL_START, REMI_TOKEN_END, device=device, dtype=torch.long)
+            allowed = torch.arange(REMI_VEL_START, REMI_TOKEN_END, device=device, dtype=torch.long)
+            _REMI_ALLOWED_CACHE[cache_key] = allowed
+            return allowed
         allowed = [REMI_BAR]
         allowed.extend(range(REMI_POS_START, REMI_DUR_START))
-        return torch.tensor(allowed, device=device, dtype=torch.long)
+        allowed_tensor = torch.tensor(allowed, device=device, dtype=torch.long)
+        _REMI_ALLOWED_CACHE[cache_key] = allowed_tensor
+        return allowed_tensor
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def generate_tokens(
     model: torch.nn.Module,
     prompt: list[int],
@@ -175,7 +186,7 @@ def generate_tokens(
     return tokens
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def generate_tokens_cached(
     model: torch.nn.Module,
     tokens: list[int],

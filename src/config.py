@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
 
 from .constants import TOKEN_END, TOKEN_PAD, VOCAB_SIZE
 from .remi import REMI_TOKEN_END, REMI_TOKEN_PAD, REMI_VOCAB_SIZE
@@ -119,6 +118,8 @@ def save_config(config: TrainConfig, path: str | Path) -> None:
 
 
 def seed_everything(seed: int) -> None:
+    import torch
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)

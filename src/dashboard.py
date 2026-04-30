@@ -12,13 +12,10 @@ from pathlib import Path
 
 import gradio as gr
 import numpy as np
-import torch
 
 from .config import load_config, seed_everything
-from .generate import load_checkpoint
 from .onnx_runtime import OnnxCachedGenerator
 from .remi import decode_midi_remi
-from .sample import generate_tokens
 
 CONFIG_PATH = Path(os.getenv("PIANOGEN_CONFIG", "configs/config.json"))
 CHECKPOINT_PATH = Path(os.getenv("PIANOGEN_CHECKPOINT", "models/remi-modern-2048-ft/best_model.pt"))
@@ -26,8 +23,8 @@ ONNX_STEP_PATH = Path(os.getenv("PIANOGEN_ONNX_STEP", "models/remi-modern-2048-f
 SAMPLE_RATE = 44100
 SOUNDFONT_PATH = Path(os.getenv("PIANOGEN_SOUNDFONT", "/usr/share/sounds/sf2/FluidR3_GM.sf2"))
 
-_MODEL: torch.nn.Module | OnnxCachedGenerator | None = None
-_DEVICE: torch.device | None = None
+_MODEL: object | None = None
+_DEVICE = None
 _CONFIG = None
 
 
@@ -44,19 +41,24 @@ PRESETS = {
 }
 
 
-def load_model() -> tuple[object, torch.nn.Module | OnnxCachedGenerator, torch.device]:
+def load_model() -> tuple[object, object, object]:
     global _CONFIG, _MODEL, _DEVICE
     if _MODEL is not None and _CONFIG is not None and _DEVICE is not None:
         return _CONFIG, _MODEL, _DEVICE
     if not CONFIG_PATH.exists():
         raise FileNotFoundError(f"Config not found: {CONFIG_PATH}")
     config = load_config(CONFIG_PATH)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if device.type == "cpu" and ONNX_STEP_PATH.exists() and _env_flag("PIANOGEN_ONNX", True):
+    if ONNX_STEP_PATH.exists() and _env_flag("PIANOGEN_ONNX", True):
         model = OnnxCachedGenerator(config, ONNX_STEP_PATH)
+        device = "cpu"
         _CONFIG, _MODEL, _DEVICE = config, model, device
         return config, model, device
 
+    import torch
+
+    from .generate import load_checkpoint
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if not CHECKPOINT_PATH.exists():
         raise FileNotFoundError(
             f"Checkpoint not found: {CHECKPOINT_PATH}. Set PIANOGEN_CHECKPOINT or place the model file there."
@@ -133,8 +135,11 @@ def generate(
 ):
     started = time.perf_counter()
     config, model, device = load_model()
-    seed_everything(int(seed))
     if isinstance(model, OnnxCachedGenerator):
+        import random
+
+        random.seed(int(seed))
+        np.random.seed(int(seed))
         tokens = model.generate(
             length=int(length),
             temperature=float(temperature),
@@ -144,6 +149,9 @@ def generate(
             prompt=[0],
         )
     else:
+        seed_everything(int(seed))
+        from .sample import generate_tokens
+
         tokens = generate_tokens(
             model,
             prompt=[0],

@@ -19,7 +19,8 @@ from .remi import decode_midi_remi
 
 CONFIG_PATH = Path(os.getenv("PIANOGEN_CONFIG", "configs/config.json"))
 CHECKPOINT_PATH = Path(os.getenv("PIANOGEN_CHECKPOINT", "models/remi-modern-2048-ft/best_model.pt"))
-ONNX_STEP_PATH = Path(os.getenv("PIANOGEN_ONNX_STEP", "models/remi-modern-2048-ft/step.onnx"))
+ONNX_STEP_PATH = Path(os.getenv("PIANOGEN_ONNX_STEP", "models/remi-modern-2048-ft/step-int8.onnx"))
+ONNX_FP32_STEP_PATH = Path("models/remi-modern-2048-ft/step.onnx")
 SAMPLE_RATE = 44100
 SOUNDFONT_PATH = Path(os.getenv("PIANOGEN_SOUNDFONT", "/usr/share/sounds/sf2/FluidR3_GM.sf2"))
 
@@ -48,8 +49,9 @@ def load_model() -> tuple[object, object, object]:
     if not CONFIG_PATH.exists():
         raise FileNotFoundError(f"Config not found: {CONFIG_PATH}")
     config = load_config(CONFIG_PATH)
-    if ONNX_STEP_PATH.exists() and _env_flag("PIANOGEN_ONNX", True):
-        model = OnnxCachedGenerator(config, ONNX_STEP_PATH)
+    onnx_path = ONNX_STEP_PATH if ONNX_STEP_PATH.exists() else ONNX_FP32_STEP_PATH
+    if onnx_path.exists() and _env_flag("PIANOGEN_ONNX", True):
+        model = OnnxCachedGenerator(config, onnx_path)
         device = "cpu"
         _CONFIG, _MODEL, _DEVICE = config, model, device
         return config, model, device

@@ -33,9 +33,18 @@ Implementation details:
 - SwiGLU feed-forward blocks
 - tied input/output embeddings
 - PyTorch SDPA for training
-- cached ONNX token-step inference for the dashboard
 
 Validation PPL is only comparable within the same tokenizer and eval protocol. The 38.2M config is a scale preset, not a promoted checkpoint.
+
+## Inference
+
+Generation is unconditional. The sampler starts from the configured beginning token, autoregressively samples REMI tokens, decodes them to MIDI, then renders audio when using the dashboard.
+
+Runtime options:
+
+- `Fast`: quantized cached ONNX token-step model; faster CPU inference, may sound slightly lower quality
+- `Quality`: FP32 cached ONNX token-step model
+- PyTorch: used by the CLI sampler and training code
 
 ## Install
 
@@ -45,13 +54,13 @@ uv venv --system-site-packages .uv-venv
 uv pip install --python .uv-venv/bin/python -e ".[app]"
 ```
 
-## Generate
+CLI generation:
 
 ```bash
 .uv-venv/bin/pianogen sample --output outputs/sample.mid
 ```
 
-## Dashboard
+Dashboard:
 
 ```bash
 .uv-venv/bin/python app.py
@@ -59,7 +68,7 @@ uv pip install --python .uv-venv/bin/python -e ".[app]"
 
 Open `http://localhost:7860`.
 
-The dashboard exposes audio preview and WAV download. `Fast` uses quantized cached ONNX and may sound slightly lower quality; `Quality` uses the FP32 cached ONNX model.
+The dashboard exposes audio preview and WAV download. MIDI is generated internally for rendering.
 
 ## Train
 

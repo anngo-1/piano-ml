@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import os
+import secrets
 import shutil
 import subprocess
 import tempfile
@@ -36,9 +37,9 @@ def _env_flag(name: str, default: bool) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 PRESETS = {
-    "Focused": {"temperature": 0.86, "top_k": 28, "top_p": 0.84, "repetition_penalty": 1.06, "seed": 31},
-    "Balanced": {"temperature": 1.02, "top_k": 58, "top_p": 0.92, "repetition_penalty": 1.07, "seed": 47},
-    "Creative": {"temperature": 1.18, "top_k": 110, "top_p": 0.96, "repetition_penalty": 1.10, "seed": 83},
+    "Focused": {"temperature": 0.86, "top_k": 28, "top_p": 0.84, "repetition_penalty": 1.15, "seed": -1},
+    "Balanced": {"temperature": 1.02, "top_k": 58, "top_p": 0.92, "repetition_penalty": 1.15, "seed": -1},
+    "Creative": {"temperature": 1.18, "top_k": 110, "top_p": 0.96, "repetition_penalty": 1.15, "seed": -1},
 }
 
 
@@ -144,6 +145,16 @@ def apply_preset(preset: str):
     )
 
 
+def resolve_seed(seed) -> int:
+    try:
+        seed_int = int(seed)
+    except (TypeError, ValueError):
+        seed_int = -1
+    if seed_int < 0:
+        return secrets.randbelow(2**31 - 1)
+    return seed_int
+
+
 def generate(
     runtime_mode: str,
     preset: str,
@@ -155,12 +166,13 @@ def generate(
     seed: int,
 ):
     started = time.perf_counter()
+    seed_int = resolve_seed(seed)
     config, model, device, runtime = load_model(runtime_mode)
     if isinstance(model, OnnxCachedGenerator):
         import random
 
-        random.seed(int(seed))
-        np.random.seed(int(seed))
+        random.seed(seed_int)
+        np.random.seed(seed_int)
         tokens = model.generate(
             length=int(length),
             temperature=float(temperature),
@@ -170,7 +182,7 @@ def generate(
             prompt=[0],
         )
     else:
-        seed_everything(int(seed))
+        seed_everything(seed_int)
         from .sample import generate_tokens
 
         tokens = generate_tokens(
@@ -187,18 +199,22 @@ def generate(
             constrained=True,
         )
     tmpdir = Path(tempfile.mkdtemp(prefix="pianogen_"))
-    midi_path = tmpdir / f"pianogen_{preset.lower()}_{seed}.mid"
-    wav_path = tmpdir / f"pianogen_{preset.lower()}_{seed}.wav"
+    midi_path = tmpdir / f"pianogen_{preset.lower()}_{seed_int}.mid"
+    wav_path = tmpdir / f"pianogen_{preset.lower()}_{seed_int}.wav"
     midi = decode_midi_remi(tokens, midi_path)
     render_audio(midi, midi_path, wav_path)
     note_count = sum(len(inst.notes) for inst in midi.instruments)
     renderer = "FluidSynth" if shutil.which("fluidsynth") and SOUNDFONT_PATH.exists() else "pretty_midi"
     elapsed = time.perf_counter() - started
-    quality_note = " Fast uses quantized ONNX and may be lower quality." if runtime_mode == "Fast" else ""
+    quality_note = ""
+    if runtime.startswith("onnxruntime") and runtime_mode == "Fast":
+        quality_note = " Fast uses quantized ONNX and may be lower quality."
+    elif runtime.startswith("cpu"):
+        quality_note = " Running from the PyTorch checkpoint on CPU is slower than cached ONNX."
     summary = (
         f"Generated {len(tokens)} tokens, {note_count} notes, "
         f"audio duration {midi.get_end_time():.2f}s on {runtime} in {elapsed:.1f}s. "
-        f"Audio renderer: {renderer}.{quality_note}"
+        f"Audio renderer: {renderer}. Seed: {seed_int}.{quality_note}"
     )
     return str(wav_path), str(wav_path), summary
 
@@ -213,13 +229,16 @@ with gr.Blocks(title="pianogen") as demo:
         runtime_mode = gr.Radio(["Fast", "Quality"], value="Fast", label="Runtime")
         preset = gr.Dropdown(list(PRESETS), value="Balanced", label="Preset")
         length = gr.Slider(256, 3072, value=1024, step=128, label="Generation tokens")
-        seed = gr.Number(value=47, precision=0, label="Seed")
-    gr.Markdown("Fast uses a quantized ONNX model and may sound slightly lower quality. Quality uses the FP32 ONNX model and is slower.")
+        seed = gr.Number(value=-1, precision=0, label="Seed (-1 random)")
+    gr.Markdown(
+        "Fast uses quantized ONNX when cached step files are present. "
+        "Without those files, the app uses the PyTorch checkpoint with CPU int8 quantization."
+    )
     with gr.Row():
         temperature = gr.Slider(0.7, 1.35, value=1.02, step=0.01, label="Temperature")
         top_k = gr.Slider(0, 160, value=58, step=1, label="Top-k")
         top_p = gr.Slider(0.75, 1.0, value=0.92, step=0.01, label="Top-p")
-        repetition_penalty = gr.Slider(1.0, 1.2, value=1.07, step=0.01, label="Repetition penalty")
+        repetition_penalty = gr.Slider(1.0, 1.2, value=1.15, step=0.01, label="Repetition penalty")
     preset.change(apply_preset, inputs=preset, outputs=[temperature, top_k, top_p, repetition_penalty, seed])
     button = gr.Button("Generate", variant="primary")
     audio = gr.Audio(label="Audio preview", type="filepath")

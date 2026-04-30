@@ -38,6 +38,7 @@ These are papers and projects that inspired this implementation. This repository
 - [GQA](https://aclanthology.org/2023.emnlp-main.298/) introduced grouped-query attention.
 - [Root Mean Square Layer Normalization](https://papers.neurips.cc/paper/9403-root-mean-square-layer-normalization) introduced RMSNorm.
 - [GLU Variants Improve Transformer](https://arxiv.org/abs/2002.05202) introduced SwiGLU-style feed-forward variants.
+- [Decoupled Weight Decay Regularization](https://arxiv.org/abs/1711.05101) introduced AdamW.
 - [Muon](https://github.com/KellerJordan/Muon) is the optimizer implementation this project follows.
 
 <details>
@@ -113,9 +114,17 @@ These are papers and projects that inspired this implementation. This repository
   url = {https://arxiv.org/abs/2002.05202}
 }
 
+@inproceedings{loshchilov2019decoupled,
+  title = {Decoupled Weight Decay Regularization},
+  author = {Loshchilov, Ilya and Hutter, Frank},
+  booktitle = {International Conference on Learning Representations},
+  year = {2019},
+  url = {https://arxiv.org/abs/1711.05101}
+}
+
 @misc{jordan2024muon,
   title = {Muon: An optimizer for hidden layers in neural networks},
-  author = {Keller Jordan and Yuchen Jin and Vlado Boza and You Jiacheng and Franz Cesista and Laker Newhouse and Jeremy Bernstein},
+  author = {Keller Jordan and Yuchen Jin and Vlado Boza and Jiacheng You and Franz Cesista and Laker Newhouse and Jeremy Bernstein},
   year = {2024},
   url = {https://kellerjordan.github.io/posts/muon/}
 }

@@ -28,7 +28,7 @@ class SamplingConfig:
     top_k: int = 40
     top_p: float = 0.92
     prompt: list[int] = field(default_factory=lambda: [60, 281])
-    repetition_penalty: float = 1.15
+    repetition_penalty: float = 1.09
     constrained: bool = True
 
 

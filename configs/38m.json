@@ -32,7 +32,7 @@
     "prompt": [
       0
     ],
-    "repetition_penalty": 1.15,
+    "repetition_penalty": 1.09,
     "constrained": true
   },
   "optimizer": "muon",

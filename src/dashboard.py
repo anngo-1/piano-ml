@@ -37,9 +37,9 @@ def _env_flag(name: str, default: bool) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 PRESETS = {
-    "Focused": {"temperature": 0.86, "top_k": 28, "top_p": 0.84, "repetition_penalty": 1.15, "seed": -1},
-    "Balanced": {"temperature": 1.02, "top_k": 58, "top_p": 0.92, "repetition_penalty": 1.15, "seed": -1},
-    "Creative": {"temperature": 1.18, "top_k": 110, "top_p": 0.96, "repetition_penalty": 1.15, "seed": -1},
+    "Focused": {"temperature": 0.86, "top_k": 28, "top_p": 0.84, "repetition_penalty": 1.09, "seed": -1},
+    "Balanced": {"temperature": 1.02, "top_k": 58, "top_p": 0.92, "repetition_penalty": 1.09, "seed": -1},
+    "Creative": {"temperature": 1.18, "top_k": 110, "top_p": 0.96, "repetition_penalty": 1.09, "seed": -1},
 }
 
 
@@ -238,7 +238,7 @@ with gr.Blocks(title="pianogen") as demo:
         temperature = gr.Slider(0.7, 1.35, value=1.02, step=0.01, label="Temperature")
         top_k = gr.Slider(0, 160, value=58, step=1, label="Top-k")
         top_p = gr.Slider(0.75, 1.0, value=0.92, step=0.01, label="Top-p")
-        repetition_penalty = gr.Slider(1.0, 1.2, value=1.15, step=0.01, label="Repetition penalty")
+        repetition_penalty = gr.Slider(1.0, 1.2, value=1.09, step=0.01, label="Repetition penalty")
     preset.change(apply_preset, inputs=preset, outputs=[temperature, top_k, top_p, repetition_penalty, seed])
     button = gr.Button("Generate", variant="primary")
     audio = gr.Audio(label="Audio preview", type="filepath")

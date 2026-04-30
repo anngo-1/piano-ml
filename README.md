@@ -59,6 +59,7 @@ ssh -L 7860:127.0.0.1:7860 root@YOUR_HOST -p YOUR_PORT -i ~/.ssh/id_ed25519
 ```
 
 The dashboard exposes audio only: browser preview plus downloadable WAV. MIDI is generated internally for rendering.
+On CPU, the dashboard uses a cached ONNX token-step model when `models/remi-modern-2048-ft/step.onnx` is present, with PyTorch as a fallback.
 
 ## Train
 

@@ -16,15 +16,17 @@ import torch
 
 from .config import load_config, seed_everything
 from .generate import load_checkpoint
+from .onnx_runtime import OnnxCachedGenerator
 from .remi import decode_midi_remi
 from .sample import generate_tokens
 
 CONFIG_PATH = Path(os.getenv("PIANOGEN_CONFIG", "configs/config.json"))
 CHECKPOINT_PATH = Path(os.getenv("PIANOGEN_CHECKPOINT", "models/remi-modern-2048-ft/best_model.pt"))
+ONNX_STEP_PATH = Path(os.getenv("PIANOGEN_ONNX_STEP", "models/remi-modern-2048-ft/step.onnx"))
 SAMPLE_RATE = 44100
 SOUNDFONT_PATH = Path(os.getenv("PIANOGEN_SOUNDFONT", "/usr/share/sounds/sf2/FluidR3_GM.sf2"))
 
-_MODEL: torch.nn.Module | None = None
+_MODEL: torch.nn.Module | OnnxCachedGenerator | None = None
 _DEVICE: torch.device | None = None
 _CONFIG = None
 
@@ -42,18 +44,23 @@ PRESETS = {
 }
 
 
-def load_model() -> tuple[object, torch.nn.Module, torch.device]:
+def load_model() -> tuple[object, torch.nn.Module | OnnxCachedGenerator, torch.device]:
     global _CONFIG, _MODEL, _DEVICE
     if _MODEL is not None and _CONFIG is not None and _DEVICE is not None:
         return _CONFIG, _MODEL, _DEVICE
     if not CONFIG_PATH.exists():
         raise FileNotFoundError(f"Config not found: {CONFIG_PATH}")
+    config = load_config(CONFIG_PATH)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device.type == "cpu" and ONNX_STEP_PATH.exists() and _env_flag("PIANOGEN_ONNX", True):
+        model = OnnxCachedGenerator(config, ONNX_STEP_PATH)
+        _CONFIG, _MODEL, _DEVICE = config, model, device
+        return config, model, device
+
     if not CHECKPOINT_PATH.exists():
         raise FileNotFoundError(
             f"Checkpoint not found: {CHECKPOINT_PATH}. Set PIANOGEN_CHECKPOINT or place the model file there."
         )
-    config = load_config(CONFIG_PATH)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = load_checkpoint(config, CHECKPOINT_PATH, device)
     if device.type == "cpu" and _env_flag("PIANOGEN_QUANTIZE", True):
         with warnings.catch_warnings():
@@ -127,20 +134,30 @@ def generate(
     started = time.perf_counter()
     config, model, device = load_model()
     seed_everything(int(seed))
-    tokens = generate_tokens(
-        model,
-        prompt=[0],
-        length=int(length),
-        seq_len=config.seq_len,
-        temperature=float(temperature),
-        top_k=int(top_k),
-        top_p=float(top_p),
-        device=device,
-        pad_token=config.token_pad,
-        repetition_penalty=float(repetition_penalty),
-        constrained=True,
-        tokenizer="remi",
-    )
+    if isinstance(model, OnnxCachedGenerator):
+        tokens = model.generate(
+            length=int(length),
+            temperature=float(temperature),
+            top_k=int(top_k),
+            top_p=float(top_p),
+            repetition_penalty=float(repetition_penalty),
+            prompt=[0],
+        )
+    else:
+        tokens = generate_tokens(
+            model,
+            prompt=[0],
+            length=int(length),
+            seq_len=config.seq_len,
+            temperature=float(temperature),
+            top_k=int(top_k),
+            top_p=float(top_p),
+            device=device,
+            pad_token=config.token_pad,
+            repetition_penalty=float(repetition_penalty),
+            constrained=True,
+            tokenizer="remi",
+        )
     tmpdir = Path(tempfile.mkdtemp(prefix="pianogen_"))
     midi_path = tmpdir / f"pianogen_{preset.lower()}_{seed}.mid"
     wav_path = tmpdir / f"pianogen_{preset.lower()}_{seed}.wav"
@@ -149,7 +166,10 @@ def generate(
     note_count = sum(len(inst.notes) for inst in midi.instruments)
     renderer = "FluidSynth" if shutil.which("fluidsynth") and SOUNDFONT_PATH.exists() else "pretty_midi"
     elapsed = time.perf_counter() - started
-    runtime = f"{device.type}+int8" if getattr(model, "_pianogen_quantized", False) else device.type
+    if isinstance(model, OnnxCachedGenerator):
+        runtime = "onnxruntime"
+    else:
+        runtime = f"{device.type}+int8" if getattr(model, "_pianogen_quantized", False) else device.type
     summary = (
         f"Generated {len(tokens)} tokens, {note_count} notes, "
         f"audio duration {midi.get_end_time():.2f}s on {runtime} in {elapsed:.1f}s. "

@@ -1,97 +1,10 @@
 from __future__ import annotations
 
-import math
-
 import torch
 from torch import nn
 import torch.nn.functional as F
 
 KVCache = tuple[torch.Tensor, torch.Tensor, int]
-
-
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model: int, dropout: float, max_len: int):
-        super().__init__()
-        self.dropout = nn.Dropout(dropout)
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer("pe", pe.unsqueeze(0))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.dropout(x + self.pe[:, : x.size(1), :].to(x.device))
-
-
-class TransformerBlock(nn.Module):
-    def __init__(self, d_model: int, num_heads: int, ffn_dim: int, dropout: float):
-        super().__init__()
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.attn = nn.MultiheadAttention(d_model, num_heads, dropout=dropout, batch_first=True)
-        self.ff = nn.Sequential(
-            nn.Linear(d_model, ffn_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(ffn_dim, d_model),
-        )
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x: torch.Tensor, causal_mask: torch.Tensor, padding_mask: torch.Tensor) -> torch.Tensor:
-        y = self.norm1(x)
-        attn_out, _ = self.attn(y, y, y, attn_mask=causal_mask, key_padding_mask=padding_mask, need_weights=False)
-        x = x + self.dropout(attn_out)
-        x = x + self.dropout(self.ff(self.norm2(x)))
-        return x
-
-
-class MusicTransformer(nn.Module):
-    def __init__(
-        self,
-        vocab_size: int,
-        d_model: int,
-        num_heads: int,
-        num_layers: int,
-        ffn_dim: int,
-        dropout: float,
-        max_seq_len: int,
-        padding_idx: int,
-    ):
-        super().__init__()
-        self.d_model = d_model
-        self.padding_idx = padding_idx
-        self.embedding = nn.Embedding(vocab_size, d_model, padding_idx=padding_idx)
-        self.pos_encoding = PositionalEncoding(d_model, dropout, max_len=max(2 * max_seq_len, 1024))
-        self.layers = nn.ModuleList(
-            [TransformerBlock(d_model, num_heads, ffn_dim, dropout) for _ in range(num_layers)]
-        )
-        self.ln_f = nn.LayerNorm(d_model)
-        self.fc_out = nn.Linear(d_model, vocab_size, bias=False)
-        self.fc_out.weight = self.embedding.weight
-        self.apply(self._init_weights)
-
-    @staticmethod
-    def _init_weights(module: nn.Module) -> None:
-        if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.padding_idx is not None:
-                with torch.no_grad():
-                    module.weight[module.padding_idx].zero_()
-
-    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
-        seq_len = tokens.size(1)
-        mask = torch.triu(torch.ones((seq_len, seq_len), device=tokens.device, dtype=torch.bool), diagonal=1)
-        padding_mask = tokens.eq(self.padding_idx)
-        x = self.embedding(tokens)
-        x = self.pos_encoding(x)
-        for layer in self.layers:
-            x = layer(x, mask, padding_mask)
-        return self.fc_out(self.ln_f(x))
 
 
 class RMSNorm(nn.Module):
@@ -159,7 +72,7 @@ class SwiGLU(nn.Module):
         return self.w2(self.dropout(F.silu(self.w1(x)) * self.w3(x)))
 
 
-class ModernCausalSelfAttention(nn.Module):
+class CausalSelfAttention(nn.Module):
     def __init__(
         self,
         d_model: int,
@@ -257,7 +170,7 @@ class ModernCausalSelfAttention(nn.Module):
         return self.out_proj(y), next_cache
 
 
-class ModernTransformerBlock(nn.Module):
+class TransformerBlock(nn.Module):
     def __init__(
         self,
         d_model: int,
@@ -270,7 +183,7 @@ class ModernTransformerBlock(nn.Module):
         super().__init__()
         self.attn_norm = RMSNorm(d_model)
         self.ffn_norm = RMSNorm(d_model)
-        self.attn = ModernCausalSelfAttention(d_model, num_heads, num_kv_heads, dropout, rope_theta)
+        self.attn = CausalSelfAttention(d_model, num_heads, num_kv_heads, dropout, rope_theta)
         self.ffn = SwiGLU(d_model, ffn_dim, dropout)
         self.dropout = nn.Dropout(dropout)
 
@@ -292,7 +205,7 @@ class ModernTransformerBlock(nn.Module):
         return x, next_cache
 
 
-class ModernMusicTransformer(nn.Module):
+class MusicTransformer(nn.Module):
     def __init__(
         self,
         vocab_size: int,
@@ -315,7 +228,7 @@ class ModernMusicTransformer(nn.Module):
         self.embed_dropout = nn.Dropout(dropout)
         self.layers = nn.ModuleList(
             [
-                ModernTransformerBlock(d_model, num_heads, num_kv_heads, ffn_dim, dropout, rope_theta)
+                TransformerBlock(d_model, num_heads, num_kv_heads, ffn_dim, dropout, rope_theta)
                 for _ in range(num_layers)
             ]
         )

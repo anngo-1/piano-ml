@@ -5,7 +5,6 @@ from pathlib import Path
 import torch
 
 from .config import TrainConfig
-from .midi import decode_midi
 from .remi import decode_midi_remi
 from .sample import generate_tokens
 from .train import build_model
@@ -37,14 +36,27 @@ def generate(config: TrainConfig, checkpoint: str | Path, output: str | Path | N
         pad_token=config.token_pad,
         repetition_penalty=config.sampling.repetition_penalty,
         constrained=config.sampling.constrained,
-        min_pitch=config.sampling.min_pitch,
-        max_pitch=config.sampling.max_pitch,
-        max_active_notes=config.sampling.max_active_notes,
-        tokenizer=config.tokenizer,
     )
-    if config.tokenizer == "remi":
-        midi = decode_midi_remi(tokens, output_path)
-    else:
-        midi = decode_midi(tokens, output_path)
+    midi = decode_midi_remi(tokens, output_path)
     print(f"wrote {output_path} duration={midi.get_end_time():.2f}s tokens={len(tokens)}")
     return output_path
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/config.json")
+    parser.add_argument("--checkpoint", default="models/remi-17m/best_model.pt")
+    parser.add_argument("--output", default="outputs/sample.mid")
+    args = parser.parse_args()
+
+    from .config import load_config, seed_everything
+
+    config = load_config(args.config)
+    seed_everything(config.seed)
+    generate(config, args.checkpoint, args.output)
+
+
+if __name__ == "__main__":
+    main()

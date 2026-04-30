@@ -9,7 +9,7 @@ It trains on MAESTRO MIDI, predicts REMI tokens, turns them back into MIDI, and 
 Current model file:
 
 ```text
-models/remi-modern-2048-ft/best_model.pt
+models/remi-17m/best_model.pt
 ```
 
 Default config:
@@ -34,7 +34,7 @@ The app has two CPU modes:
 - `Fast`: quantized ONNX, quicker but can sound a little worse
 - `Quality`: FP32 ONNX
 
-The CLI sampler uses PyTorch.
+The local sampler uses PyTorch.
 
 ## Install
 
@@ -49,13 +49,13 @@ uv pip install --python .uv-venv/bin/python -e ".[app]"
 Generate MIDI:
 
 ```bash
-.uv-venv/bin/pianogen sample --output outputs/sample.mid
+uv run python -m src.generate --output outputs/sample.mid
 ```
 
 Run the app:
 
 ```bash
-.uv-venv/bin/python app.py
+uv run python app.py
 ```
 
 Open `http://localhost:7860`.
@@ -63,19 +63,15 @@ Open `http://localhost:7860`.
 ## Train
 
 ```bash
-.uv-venv/bin/pianogen --config configs/config.json prepare
-.uv-venv/bin/pianogen --config configs/config.json train
+uv run python -m src.data --config configs/config.json
+uv run python -m src.train --config configs/config.json
 ```
 
 Try the 38.2M config:
 
 ```bash
-.uv-venv/bin/pianogen --config configs/38m.json train
+uv run python -m src.train --config configs/38m.json
 ```
-
-## Hugging Face
-
-`huggingface/space/` has the files for the Gradio Space. Keep weights on Hugging Face, not in this repo.
 
 ## Layout
 
@@ -83,8 +79,5 @@ Try the 38.2M config:
 app.py                  local app launcher
 configs/                configs
 huggingface/space/      files for the Space
-scripts/                utilities
 src/                    code
 ```
-
-Ignored locally: `data/`, `models/`, `outputs/`, `runs/`, and rendered media.

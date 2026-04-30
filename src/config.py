@@ -8,13 +8,11 @@ from typing import Any
 
 import numpy as np
 
-from .constants import TOKEN_END, TOKEN_PAD, VOCAB_SIZE
 from .remi import REMI_TOKEN_END, REMI_TOKEN_PAD, REMI_VOCAB_SIZE
 
 
 @dataclass
 class ModelConfig:
-    architecture: str = "legacy"
     d_model: int = 128
     num_heads: int = 4
     num_kv_heads: int | None = None
@@ -32,9 +30,6 @@ class SamplingConfig:
     prompt: list[int] = field(default_factory=lambda: [60, 281])
     repetition_penalty: float = 1.05
     constrained: bool = True
-    min_pitch: int = 21
-    max_pitch: int = 108
-    max_active_notes: int = 16
 
 
 @dataclass
@@ -42,7 +37,6 @@ class TrainConfig:
     seed: int = 21
     data_dir: Path = Path("data")
     processed_dir: Path = Path("data/processed_maestro")
-    tokenizer: str = "event"
     models_dir: Path = Path("models")
     output_dir: Path = Path("outputs")
     maestro_url: str = "https://storage.googleapis.com/magentadata/datasets/maestro/v3.0.0/maestro-v3.0.0-midi.zip"
@@ -66,9 +60,9 @@ class TrainConfig:
     resume_from: Path | None = None
     model: ModelConfig = field(default_factory=ModelConfig)
     sampling: SamplingConfig = field(default_factory=SamplingConfig)
-    vocab_size: int = VOCAB_SIZE
-    token_pad: int = TOKEN_PAD
-    token_end: int = TOKEN_END
+    vocab_size: int = REMI_VOCAB_SIZE
+    token_pad: int = REMI_TOKEN_PAD
+    token_end: int = REMI_TOKEN_END
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -88,12 +82,9 @@ def load_config(path: str | Path) -> TrainConfig:
     cfg = TrainConfig(**raw, model=model, sampling=sampling)
     for key in ("data_dir", "processed_dir", "models_dir", "output_dir"):
         setattr(cfg, key, _coerce_path(getattr(cfg, key)))
-    if cfg.tokenizer == "remi":
-        cfg.vocab_size = REMI_VOCAB_SIZE
-        cfg.token_pad = REMI_TOKEN_PAD
-        cfg.token_end = REMI_TOKEN_END
-    elif cfg.tokenizer != "event":
-        raise ValueError(f"unknown tokenizer: {cfg.tokenizer}")
+    cfg.vocab_size = REMI_VOCAB_SIZE
+    cfg.token_pad = REMI_TOKEN_PAD
+    cfg.token_end = REMI_TOKEN_END
     return cfg
 
 

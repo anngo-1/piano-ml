@@ -10,40 +10,26 @@ from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .config import TrainConfig, save_config
+from .config import TrainConfig, load_config, save_config, seed_everything
 from .data import MusicTokenDataset
-from .model import ModernMusicTransformer, MusicTransformer, count_parameters
+from .model import MusicTransformer, count_parameters
 from .optim import Muon, split_muon_params
 
 
 def build_model(config: TrainConfig, device: torch.device) -> nn.Module:
     model_cfg = config.model
-    if model_cfg.architecture == "modern":
-        model = ModernMusicTransformer(
-            vocab_size=config.vocab_size,
-            d_model=model_cfg.d_model,
-            num_heads=model_cfg.num_heads,
-            num_layers=model_cfg.num_layers,
-            ffn_dim=model_cfg.ffn_dim,
-            dropout=model_cfg.dropout,
-            max_seq_len=config.seq_len,
-            padding_idx=config.token_pad,
-            num_kv_heads=model_cfg.num_kv_heads,
-            rope_theta=model_cfg.rope_theta,
-        )
-    elif model_cfg.architecture == "legacy":
-        model = MusicTransformer(
-            vocab_size=config.vocab_size,
-            d_model=model_cfg.d_model,
-            num_heads=model_cfg.num_heads,
-            num_layers=model_cfg.num_layers,
-            ffn_dim=model_cfg.ffn_dim,
-            dropout=model_cfg.dropout,
-            max_seq_len=config.seq_len,
-            padding_idx=config.token_pad,
-        )
-    else:
-        raise ValueError(f"unknown model architecture: {model_cfg.architecture}")
+    model = MusicTransformer(
+        vocab_size=config.vocab_size,
+        d_model=model_cfg.d_model,
+        num_heads=model_cfg.num_heads,
+        num_layers=model_cfg.num_layers,
+        ffn_dim=model_cfg.ffn_dim,
+        dropout=model_cfg.dropout,
+        max_seq_len=config.seq_len,
+        padding_idx=config.token_pad,
+        num_kv_heads=model_cfg.num_kv_heads,
+        rope_theta=model_cfg.rope_theta,
+    )
     return model.to(device)
 
 
@@ -216,3 +202,18 @@ def train(config: TrainConfig) -> Path:
     if not best_path.exists():
         torch.save({"model": model.state_dict(), "config": str(config.models_dir / "config.json")}, best_path)
     return best_path
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/config.json")
+    args = parser.parse_args()
+    config = load_config(args.config)
+    seed_everything(config.seed)
+    train(config)
+
+
+if __name__ == "__main__":
+    main()

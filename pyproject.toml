@@ -21,9 +21,6 @@ dependencies = [
 onnx = ["onnx>=1.15", "onnxruntime>=1.17"]
 app = ["gradio>=5.0"]
 
-[project.scripts]
-pianogen = "src.cli:main"
-
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src"]

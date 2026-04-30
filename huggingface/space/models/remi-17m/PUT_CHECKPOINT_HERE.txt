@@ -1,3 +1,3 @@
 Put best_model.pt in this directory with Git LFS:
 
-models/remi-modern-2048-ft/best_model.pt
+models/remi-17m/best_model.pt

@@ -17,7 +17,6 @@
   "mixed_precision": true,
   "label_smoothing": 0.01,
   "model": {
-    "architecture": "modern",
     "d_model": 512,
     "num_heads": 8,
     "num_kv_heads": 2,
@@ -34,15 +33,11 @@
       0
     ],
     "repetition_penalty": 1.07,
-    "constrained": true,
-    "min_pitch": 21,
-    "max_pitch": 108,
-    "max_active_notes": 16
+    "constrained": true
   },
   "optimizer": "muon",
   "muon_learning_rate": 0.006,
   "muon_momentum": 0.95,
-  "tokenizer": "remi",
   "lr_schedule": "cosine",
   "min_lr_ratio": 0.2,
   "early_stopping_patience": 8,

@@ -26,3 +26,20 @@ def export_onnx(config: TrainConfig, checkpoint: str | Path, output: str | Path)
     )
     print(f"wrote {output}")
     return output
+
+
+def main() -> None:
+    import argparse
+
+    from .config import load_config
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/config.json")
+    parser.add_argument("--checkpoint", default="models/remi-17m/best_model.pt")
+    parser.add_argument("--output", default="models/model.onnx")
+    args = parser.parse_args()
+    export_onnx(load_config(args.config), args.checkpoint, args.output)
+
+
+if __name__ == "__main__":
+    main()

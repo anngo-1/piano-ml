@@ -17,7 +17,7 @@ Tiny piano generation demo.
 Expected model path:
 
 ```text
-models/remi-modern-2048-ft/best_model.pt
+models/remi-17m/best_model.pt
 ```
 
 Expected config path:

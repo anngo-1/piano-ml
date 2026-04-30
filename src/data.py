@@ -15,7 +15,6 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from .config import TrainConfig
-from .midi import encode_midi, encode_midi_with_random_transpose
 from .remi import encode_midi_remi
 
 
@@ -49,14 +48,11 @@ def load_metadata(dataset_dir: str | Path) -> pd.DataFrame:
     return pd.read_csv(csv_path)
 
 
-def _process_one(args: tuple[str, str, bool, str]) -> bool:
-    midi_path, output_path, augment, tokenizer = args
+def _process_one(args: tuple[str, str, bool]) -> bool:
+    midi_path, output_path, augment = args
     try:
-        if tokenizer == "remi":
-            transpose = random.randint(-5, 5) if augment else 0
-            tokens = encode_midi_remi(midi_path, transpose=transpose)
-        else:
-            tokens = encode_midi_with_random_transpose(midi_path) if augment else encode_midi(midi_path)
+        transpose = random.randint(-5, 5) if augment else 0
+        tokens = encode_midi_remi(midi_path, transpose=transpose)
         if tokens.size <= 1:
             return False
         with Path(output_path).open("wb") as f:
@@ -73,7 +69,6 @@ def preprocess_split(
     output_dir: str | Path,
     workers: int = 8,
     overwrite: bool = False,
-    tokenizer: str = "event",
 ) -> int:
     maestro_dir = Path(maestro_dir)
     split_dir = Path(output_dir) / split
@@ -92,7 +87,7 @@ def preprocess_split(
         if not midi_path.exists():
             continue
         output_name = Path(row["midi_filename"]).with_suffix(".pickle").name
-        jobs.append((str(midi_path), str(split_dir / output_name), split == "train", tokenizer))
+        jobs.append((str(midi_path), str(split_dir / output_name), split == "train"))
 
     if not jobs:
         return 0
@@ -145,5 +140,21 @@ class MusicTokenDataset(Dataset):
 def prepare_maestro(config: TrainConfig, overwrite: bool = False) -> None:
     dataset_dir = download_maestro(config)
     metadata = load_metadata(dataset_dir)
-    preprocess_split(metadata, dataset_dir, "train", config.processed_dir, config.num_workers, overwrite, config.tokenizer)
-    preprocess_split(metadata, dataset_dir, "validation", config.processed_dir, config.num_workers, overwrite, config.tokenizer)
+    preprocess_split(metadata, dataset_dir, "train", config.processed_dir, config.num_workers, overwrite)
+    preprocess_split(metadata, dataset_dir, "validation", config.processed_dir, config.num_workers, overwrite)
+
+
+def main() -> None:
+    import argparse
+
+    from .config import load_config
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/config.json")
+    parser.add_argument("--overwrite", action="store_true")
+    args = parser.parse_args()
+    prepare_maestro(load_config(args.config), overwrite=args.overwrite)
+
+
+if __name__ == "__main__":
+    main()

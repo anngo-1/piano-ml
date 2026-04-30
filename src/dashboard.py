@@ -18,9 +18,9 @@ from .onnx_runtime import OnnxCachedGenerator
 from .remi import decode_midi_remi
 
 CONFIG_PATH = Path(os.getenv("PIANOGEN_CONFIG", "configs/config.json"))
-CHECKPOINT_PATH = Path(os.getenv("PIANOGEN_CHECKPOINT", "models/remi-modern-2048-ft/best_model.pt"))
-ONNX_STEP_PATH = Path(os.getenv("PIANOGEN_ONNX_STEP", "models/remi-modern-2048-ft/step-int8.onnx"))
-ONNX_FP32_STEP_PATH = Path("models/remi-modern-2048-ft/step.onnx")
+CHECKPOINT_PATH = Path(os.getenv("PIANOGEN_CHECKPOINT", "models/remi-17m/best_model.pt"))
+ONNX_STEP_PATH = Path(os.getenv("PIANOGEN_ONNX_STEP", "models/remi-17m/step-int8.onnx"))
+ONNX_FP32_STEP_PATH = Path("models/remi-17m/step.onnx")
 SAMPLE_RATE = 44100
 SOUNDFONT_PATH = Path(os.getenv("PIANOGEN_SOUNDFONT", "/usr/share/sounds/sf2/FluidR3_GM.sf2"))
 
@@ -185,7 +185,6 @@ def generate(
             pad_token=config.token_pad,
             repetition_penalty=float(repetition_penalty),
             constrained=True,
-            tokenizer="remi",
         )
     tmpdir = Path(tempfile.mkdtemp(prefix="pianogen_"))
     midi_path = tmpdir / f"pianogen_{preset.lower()}_{seed}.mid"

@@ -3,8 +3,7 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from .constants import RANGE_NOTE_OFF, RANGE_NOTE_ON, RANGE_TIME_SHIFT, RANGE_VELOCITY, TOKEN_END, TOKEN_PAD
-from .remi import REMI_BAR, REMI_DUR_START, REMI_PITCH_START, REMI_POS_START, REMI_TOKEN_END, REMI_VEL_START
+from .remi import REMI_BAR, REMI_DUR_START, REMI_PITCH_START, REMI_POS_START, REMI_TOKEN_END, REMI_TOKEN_PAD, REMI_VEL_START
 
 _REMI_ALLOWED_CACHE: dict[tuple[str, str], torch.Tensor] = {}
 
@@ -14,7 +13,7 @@ def filter_logits(
     temperature: float,
     top_k: int,
     top_p: float,
-    pad_token: int = TOKEN_PAD,
+    pad_token: int = REMI_TOKEN_PAD,
     repetition_penalty: float = 1.0,
     recent_tokens: list[int] | None = None,
     allowed_tokens: torch.Tensor | None = None,
@@ -51,41 +50,6 @@ def filter_logits(
         logits[sorted_idx[remove]] = -float("inf")
 
     return logits
-
-
-class TokenGrammarState:
-    def __init__(self, min_pitch: int = 21, max_pitch: int = 108, max_active_notes: int = 16):
-        self.min_pitch = min_pitch
-        self.max_pitch = max_pitch
-        self.max_active_notes = max_active_notes
-        self.active: set[int] = set()
-        self.expect_velocity = False
-
-    def observe(self, token: int) -> None:
-        if self.expect_velocity:
-            self.expect_velocity = False
-            return
-        if self.min_pitch <= token <= self.max_pitch:
-            self.active.add(token)
-            self.expect_velocity = True
-        elif RANGE_NOTE_ON <= token < RANGE_NOTE_ON + RANGE_NOTE_OFF:
-            self.active.discard(token - RANGE_NOTE_ON)
-
-    def allowed(self, device: torch.device) -> torch.Tensor:
-        if self.expect_velocity:
-            return torch.arange(
-                RANGE_NOTE_ON + RANGE_NOTE_OFF,
-                RANGE_NOTE_ON + RANGE_NOTE_OFF + RANGE_VELOCITY,
-                device=device,
-                dtype=torch.long,
-            )
-
-        allowed: list[int] = []
-        allowed.extend(range(RANGE_NOTE_ON + RANGE_NOTE_OFF + RANGE_VELOCITY, TOKEN_END))
-        allowed.extend(RANGE_NOTE_ON + p for p in sorted(self.active))
-        if len(self.active) < self.max_active_notes:
-            allowed.extend(range(self.min_pitch, self.max_pitch + 1))
-        return torch.tensor(sorted(set(allowed)), device=device, dtype=torch.long)
 
 
 class RemiGrammarState:
@@ -133,17 +97,13 @@ def generate_tokens(
     top_k: int,
     top_p: float,
     device: torch.device,
-    pad_token: int = TOKEN_PAD,
+    pad_token: int = REMI_TOKEN_PAD,
     repetition_penalty: float = 1.0,
     constrained: bool = True,
-    min_pitch: int = 21,
-    max_pitch: int = 108,
-    max_active_notes: int = 16,
-    tokenizer: str = "event",
 ) -> list[int]:
     model.eval()
     tokens = list(prompt)
-    grammar = RemiGrammarState() if tokenizer == "remi" else TokenGrammarState(min_pitch=min_pitch, max_pitch=max_pitch, max_active_notes=max_active_notes)
+    grammar = RemiGrammarState()
     for token in tokens:
         grammar.observe(int(token))
 
@@ -198,7 +158,7 @@ def generate_tokens_cached(
     pad_token: int,
     repetition_penalty: float,
     constrained: bool,
-    grammar: RemiGrammarState | TokenGrammarState,
+    grammar: RemiGrammarState,
 ) -> list[int]:
     caches = None
     position = 0

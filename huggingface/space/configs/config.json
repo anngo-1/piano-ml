@@ -2,7 +2,7 @@
   "seed": 21,
   "data_dir": "data",
   "processed_dir": "data/processed_maestro_remi",
-  "models_dir": "models/remi-modern-2048-ft",
+  "models_dir": "models/remi-17m",
   "output_dir": "outputs/dashboard",
   "maestro_url": "https://storage.googleapis.com/magentadata/datasets/maestro/v3.0.0/maestro-v3.0.0-midi.zip",
   "seq_len": 2048,
@@ -17,7 +17,6 @@
   "mixed_precision": true,
   "label_smoothing": 0.05,
   "model": {
-    "architecture": "modern",
     "d_model": 384,
     "num_heads": 6,
     "num_kv_heads": 2,
@@ -34,15 +33,11 @@
       0
     ],
     "repetition_penalty": 1.07,
-    "constrained": true,
-    "min_pitch": 21,
-    "max_pitch": 108,
-    "max_active_notes": 16
+    "constrained": true
   },
   "optimizer": "muon",
   "muon_learning_rate": 0.008,
   "muon_momentum": 0.95,
-  "tokenizer": "remi",
   "lr_schedule": "cosine",
   "min_lr_ratio": 0.2,
   "early_stopping_patience": 8,

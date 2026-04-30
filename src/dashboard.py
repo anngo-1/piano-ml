@@ -24,7 +24,7 @@ ONNX_FP32_STEP_PATH = Path("models/remi-modern-2048-ft/step.onnx")
 SAMPLE_RATE = 44100
 SOUNDFONT_PATH = Path(os.getenv("PIANOGEN_SOUNDFONT", "/usr/share/sounds/sf2/FluidR3_GM.sf2"))
 
-_MODEL: object | None = None
+_MODELS: dict[str, object] = {}
 _DEVICE = None
 _CONFIG = None
 
@@ -42,19 +42,31 @@ PRESETS = {
 }
 
 
-def load_model() -> tuple[object, object, object]:
-    global _CONFIG, _MODEL, _DEVICE
-    if _MODEL is not None and _CONFIG is not None and _DEVICE is not None:
-        return _CONFIG, _MODEL, _DEVICE
+def _onnx_path_for_mode(runtime_mode: str) -> tuple[Path, str]:
+    if runtime_mode == "Quality":
+        return ONNX_FP32_STEP_PATH, "onnxruntime-fp32"
+    return ONNX_STEP_PATH, "onnxruntime-int8"
+
+
+def load_model(runtime_mode: str) -> tuple[object, object, object, str]:
+    global _CONFIG, _DEVICE
     if not CONFIG_PATH.exists():
         raise FileNotFoundError(f"Config not found: {CONFIG_PATH}")
-    config = load_config(CONFIG_PATH)
-    onnx_path = ONNX_STEP_PATH if ONNX_STEP_PATH.exists() else ONNX_FP32_STEP_PATH
+    if _CONFIG is None:
+        _CONFIG = load_config(CONFIG_PATH)
+    config = _CONFIG
+    requested_onnx_path, runtime = _onnx_path_for_mode(runtime_mode)
+    onnx_path = requested_onnx_path if requested_onnx_path.exists() else ONNX_FP32_STEP_PATH
     if onnx_path.exists() and _env_flag("PIANOGEN_ONNX", True):
-        model = OnnxCachedGenerator(config, onnx_path)
+        cache_key = f"onnx:{onnx_path}"
+        if cache_key not in _MODELS:
+            _MODELS[cache_key] = OnnxCachedGenerator(config, onnx_path)
+        model = _MODELS[cache_key]
         device = "cpu"
-        _CONFIG, _MODEL, _DEVICE = config, model, device
-        return config, model, device
+        _DEVICE = device
+        if onnx_path != requested_onnx_path:
+            runtime = "onnxruntime-fp32"
+        return config, model, device, runtime
 
     import torch
 
@@ -65,15 +77,21 @@ def load_model() -> tuple[object, object, object]:
         raise FileNotFoundError(
             f"Checkpoint not found: {CHECKPOINT_PATH}. Set PIANOGEN_CHECKPOINT or place the model file there."
         )
-    model = load_checkpoint(config, CHECKPOINT_PATH, device)
-    if device.type == "cpu" and _env_flag("PIANOGEN_QUANTIZE", True):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            model = torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
-        setattr(model, "_pianogen_quantized", True)
+    cache_key = f"torch:{device.type}"
+    if cache_key not in _MODELS:
+        model = load_checkpoint(config, CHECKPOINT_PATH, device)
+        if device.type == "cpu" and _env_flag("PIANOGEN_QUANTIZE", True):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                model = torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+            setattr(model, "_pianogen_quantized", True)
+        model.eval()
+        _MODELS[cache_key] = model
+    model = _MODELS[cache_key]
     model.eval()
-    _CONFIG, _MODEL, _DEVICE = config, model, device
-    return config, model, device
+    _DEVICE = device
+    runtime = f"{device.type}+int8" if getattr(model, "_pianogen_quantized", False) else device.type
+    return config, model, device, runtime
 
 
 def write_wav(audio: np.ndarray, path: str | Path, sample_rate: int = SAMPLE_RATE) -> str:
@@ -127,6 +145,7 @@ def apply_preset(preset: str):
 
 
 def generate(
+    runtime_mode: str,
     preset: str,
     length: int,
     temperature: float,
@@ -136,7 +155,7 @@ def generate(
     seed: int,
 ):
     started = time.perf_counter()
-    config, model, device = load_model()
+    config, model, device, runtime = load_model(runtime_mode)
     if isinstance(model, OnnxCachedGenerator):
         import random
 
@@ -176,14 +195,11 @@ def generate(
     note_count = sum(len(inst.notes) for inst in midi.instruments)
     renderer = "FluidSynth" if shutil.which("fluidsynth") and SOUNDFONT_PATH.exists() else "pretty_midi"
     elapsed = time.perf_counter() - started
-    if isinstance(model, OnnxCachedGenerator):
-        runtime = "onnxruntime"
-    else:
-        runtime = f"{device.type}+int8" if getattr(model, "_pianogen_quantized", False) else device.type
+    quality_note = " Fast uses quantized ONNX and may be lower quality." if runtime_mode == "Fast" else ""
     summary = (
         f"Generated {len(tokens)} tokens, {note_count} notes, "
         f"audio duration {midi.get_end_time():.2f}s on {runtime} in {elapsed:.1f}s. "
-        f"Audio renderer: {renderer}."
+        f"Audio renderer: {renderer}.{quality_note}"
     )
     return str(wav_path), str(wav_path), summary
 
@@ -195,9 +211,11 @@ with gr.Blocks(title="pianogen") as demo:
         "The app renders audio on the server and returns a preview plus a downloadable WAV."
     )
     with gr.Row():
+        runtime_mode = gr.Radio(["Fast", "Quality"], value="Fast", label="Runtime")
         preset = gr.Dropdown(list(PRESETS), value="Balanced", label="Preset")
         length = gr.Slider(256, 3072, value=1024, step=128, label="Generation tokens")
         seed = gr.Number(value=47, precision=0, label="Seed")
+    gr.Markdown("Fast uses a quantized ONNX model and may sound slightly lower quality. Quality uses the FP32 ONNX model and is slower.")
     with gr.Row():
         temperature = gr.Slider(0.7, 1.35, value=1.02, step=0.01, label="Temperature")
         top_k = gr.Slider(0, 160, value=58, step=1, label="Top-k")
@@ -210,7 +228,7 @@ with gr.Blocks(title="pianogen") as demo:
     summary = gr.Textbox(label="Summary")
     button.click(
         generate,
-        inputs=[preset, length, temperature, top_k, top_p, repetition_penalty, seed],
+        inputs=[runtime_mode, preset, length, temperature, top_k, top_p, repetition_penalty, seed],
         outputs=[audio, wav_file, summary],
     )
 

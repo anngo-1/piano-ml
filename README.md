@@ -59,7 +59,7 @@ ssh -L 7860:127.0.0.1:7860 root@YOUR_HOST -p YOUR_PORT -i ~/.ssh/id_ed25519
 ```
 
 The dashboard exposes audio only: browser preview plus downloadable WAV. MIDI is generated internally for rendering.
-On CPU, the dashboard prefers the quantized cached ONNX token-step model at `models/remi-modern-2048-ft/step-int8.onnx`, falls back to `step.onnx`, then PyTorch.
+On CPU, the dashboard exposes `Fast` and `Quality` modes. `Fast` uses the quantized cached ONNX token-step model at `models/remi-modern-2048-ft/step-int8.onnx` and may sound slightly lower quality. `Quality` uses the FP32 cached ONNX model at `step.onnx`.
 
 ## Train
 

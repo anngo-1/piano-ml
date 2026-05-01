@@ -138,4 +138,4 @@ uv sync --extra app
 uv run python app.py
 ```
 
-The app ships with `soundfonts/GeneralUser-GS.sf2` and uses it as the default SoundFont for FluidSynth rendering. Generated MIDI is forced to acoustic grand piano before rendering. Set `PIANO_ML_FLUIDSYNTH_GAIN` to adjust render volume; the default is `0.9`. The bundled SoundFont license is included at `soundfonts/GeneralUser-GS-LICENSE.txt`.
+The app ships with `soundfonts/GeneralUser-GS.sf2` and uses it as the default SoundFont for FluidSynth rendering. Generated MIDI is forced to acoustic grand piano before rendering. The bundled SoundFont license is included at `soundfonts/GeneralUser-GS-LICENSE.txt`.

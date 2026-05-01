@@ -1,0 +1,4 @@
+numpy>=1.24
+pretty_midi>=0.2.10
+gradio>=5.0
+onnxruntime>=1.17

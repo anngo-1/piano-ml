@@ -109,7 +109,7 @@ class OnnxCachedGenerator:
         self.model_path = Path(model_path)
         _ensure_external_data_alias(self.model_path)
         options = ort.SessionOptions()
-        options.intra_op_num_threads = _env_int("PIANO_ML_ONNX_THREADS", 1)
+        options.intra_op_num_threads = _env_int("PIANO_ML_ONNX_THREADS", 2)
         options.inter_op_num_threads = 1
         options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -182,7 +182,7 @@ class OnnxCachedGenerator:
             if next_token is None:
                 break
             tokens.append(next_token)
-            if progress_callback is not None:
+            if progress_callback is not None and (len(tokens) == length or len(tokens) % 128 == 0):
                 progress_callback(len(tokens), length)
             expect = _observe_remi(expect, next_token)
         return tokens

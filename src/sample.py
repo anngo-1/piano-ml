@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import torch
 import torch.nn.functional as F
 
@@ -100,6 +102,7 @@ def generate_tokens(
     pad_token: int = REMI_TOKEN_PAD,
     repetition_penalty: float = 1.0,
     constrained: bool = True,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> list[int]:
     model.eval()
     tokens = list(prompt) or [REMI_BAR]
@@ -122,6 +125,7 @@ def generate_tokens(
             repetition_penalty=repetition_penalty,
             constrained=constrained,
             grammar=grammar,
+            progress_callback=progress_callback,
         )
 
     while len(tokens) < length:
@@ -144,6 +148,8 @@ def generate_tokens(
             break
         next_token = int(torch.multinomial(probs, 1).item())
         tokens.append(next_token)
+        if progress_callback is not None and (len(tokens) == length or len(tokens) % 128 == 0):
+            progress_callback(len(tokens), length)
         grammar.observe(next_token)
     return tokens
 
@@ -161,6 +167,7 @@ def generate_tokens_cached(
     repetition_penalty: float,
     constrained: bool,
     grammar: RemiGrammarState,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> list[int]:
     caches = None
     position = 0
@@ -192,6 +199,8 @@ def generate_tokens_cached(
             break
         next_token = int(torch.multinomial(probs, 1).item())
         tokens.append(next_token)
+        if progress_callback is not None and (len(tokens) == length or len(tokens) % 128 == 0):
+            progress_callback(len(tokens), length)
         grammar.observe(next_token)
         if len(tokens) >= length:
             break

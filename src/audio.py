@@ -21,18 +21,32 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-def _env_float(name: str, default: float) -> float:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    try:
-        return max(0.0, float(raw))
-    except ValueError:
-        return default
+def find_soundfont() -> Path | None:
+    if BUNDLED_SOUNDFONT_PATH.exists():
+        return BUNDLED_SOUNDFONT_PATH
 
+    configured = os.getenv("PIANO_ML_SOUNDFONT")
+    if configured:
+        path = Path(configured).expanduser()
+        return path if path.exists() else None
 
-def bundled_soundfont_path() -> Path | None:
-    return BUNDLED_SOUNDFONT_PATH if BUNDLED_SOUNDFONT_PATH.exists() else None
+    candidates = [
+        PROJECT_ROOT / "soundfonts" / "GeneralUser-GS.sf3",
+        Path("/usr/share/sounds/sf2/FluidR3_GM.sf2"),
+        Path("/usr/share/soundfonts/FluidR3_GM.sf2"),
+        Path("/Library/Audio/Sounds/Banks/FluidR3_GM.sf2"),
+        Path("~/Library/Audio/Sounds/Banks/FluidR3_GM.sf2").expanduser(),
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+
+    for root in (Path("/opt/homebrew"), Path("/usr/local")):
+        for pattern in ("**/FluidR3_GM.sf2", "**/GeneralUser-GS.sf2", "**/GeneralUser-GS.sf3"):
+            match = next(root.glob(pattern), None)
+            if match is not None:
+                return match
+    return None
 
 
 def normalize_wav(path: str | Path, target_peak: float = 0.98) -> None:
@@ -61,18 +75,22 @@ def normalize_wav(path: str | Path, target_peak: float = 0.98) -> None:
         output.writeframes(normalized.tobytes())
 
 
-def render_with_fluidsynth(midi_path: str | Path, wav_path: str | Path, sample_rate: int) -> bool:
+def render_with_fluidsynth(
+    midi_path: str | Path,
+    wav_path: str | Path,
+    sample_rate: int,
+    target_peak: float = 0.98,
+) -> bool:
     fluidsynth = shutil.which("fluidsynth")
     if not fluidsynth:
         return False
-    soundfont_path = bundled_soundfont_path()
+    soundfont_path = find_soundfont()
     if soundfont_path is None:
         return False
 
     output = Path(wav_path)
     output.unlink(missing_ok=True)
     timeout = _env_int("PIANO_ML_FLUIDSYNTH_TIMEOUT", 300)
-    gain = _env_float("PIANO_ML_FLUIDSYNTH_GAIN", 0.9)
     try:
         subprocess.run(
             [
@@ -85,8 +103,6 @@ def render_with_fluidsynth(midi_path: str | Path, wav_path: str | Path, sample_r
                 str(output),
                 "-r",
                 str(sample_rate),
-                "-g",
-                str(gain),
                 str(soundfont_path),
                 str(midi_path),
             ],
@@ -100,5 +116,5 @@ def render_with_fluidsynth(midi_path: str | Path, wav_path: str | Path, sample_r
         return False
     if not output.exists() or output.stat().st_size <= 0:
         return False
-    normalize_wav(output)
+    normalize_wav(output, target_peak)
     return True

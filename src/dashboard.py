@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import inspect
 import os
-import queue
 import secrets
 import tempfile
-import threading
 import time
 import warnings
 import wave
@@ -25,6 +23,7 @@ CHECKPOINT_PATH = Path(os.getenv("PIANO_ML_CHECKPOINT", "models/remi-17m/best_mo
 ONNX_STEP_PATH = Path(os.getenv("PIANO_ML_ONNX_STEP", "models/remi-17m/step-int8.onnx"))
 ONNX_FP32_STEP_PATH = Path("models/remi-17m/step.onnx")
 SAMPLE_RATE = 44100
+AUDIO_TARGET_PEAK = 0.20
 
 _MODELS: dict[str, object] = {}
 _DEVICE = None
@@ -44,9 +43,16 @@ PRESETS = {
 }
 
 AUDIO_RESET_HEAD = """
+<style>
+#piano-ml-audio.piano-ml-audio-loading::after,
+.piano-ml-audio-loading::after {
+  content: none !important;
+  display: none !important;
+}
+</style>
 <script>
 (() => {
-  const playerSelector = "#piano-ml-audio audio";
+  const playerSelector = "#piano-ml-audio-preview audio";
 
   function audioSource(audio) {
     return audio.currentSrc || audio.src || "";
@@ -100,6 +106,9 @@ AUDIO_RESET_HEAD = """
   }
 
   function bindGeneratedAudio() {
+    document.querySelectorAll(".piano-ml-audio-loading").forEach((preview) => {
+      preview.classList.remove("piano-ml-audio-loading");
+    });
     document.querySelectorAll(playerSelector).forEach(bindAudio);
   }
 
@@ -108,11 +117,6 @@ AUDIO_RESET_HEAD = """
       resetPosition(audio, true);
       audio.dataset.pianoMlLastSource = audioSource(audio);
       audio.dataset.pianoMlResetOnPlay = "1";
-      try {
-        audio.load();
-      } catch (error) {
-        // The server-side clear step will still replace the source.
-      }
     });
   };
 
@@ -143,6 +147,20 @@ AUDIO_RESET_ON_GENERATE_JS = """
   return [null, null, ""];
 }
 """
+
+
+def audio_preview(path: str | Path | None = None) -> gr.Audio:
+    return gr.Audio(
+        value=None if path is None else str(path),
+        label="Audio preview",
+        type="filepath",
+        interactive=False,
+        autoplay=path is not None,
+        elem_id="piano-ml-audio-preview",
+        key=f"piano-ml-audio-preview-{secrets.token_hex(8)}",
+        playback_position=0,
+        preserved_by_key=[],
+    )
 
 
 def _onnx_path_for_mode(runtime_mode: str) -> tuple[Path, str]:
@@ -203,7 +221,7 @@ def write_wav(audio: np.ndarray, path: str | Path, sample_rate: int = SAMPLE_RAT
         audio = audio.mean(axis=1)
     peak = float(np.max(np.abs(audio))) if audio.size else 0.0
     if peak > 0:
-        audio = audio / peak * 0.95
+        audio = audio / peak * AUDIO_TARGET_PEAK
     pcm = np.asarray(audio * 32767.0, dtype=np.int16)
     with wave.open(str(path), "wb") as wav:
         wav.setnchannels(1)
@@ -217,7 +235,12 @@ def write_wav(audio: np.ndarray, path: str | Path, sample_rate: int = SAMPLE_RAT
 def render_audio(midi, midi_path: Path, wav_path: Path) -> tuple[str, str]:
     midi = force_acoustic_grand_piano(midi)
     midi.write(str(midi_path))
-    if render_with_fluidsynth(midi_path, wav_path, SAMPLE_RATE):
+    if render_with_fluidsynth(
+        midi_path,
+        wav_path,
+        SAMPLE_RATE,
+        target_peak=AUDIO_TARGET_PEAK,
+    ):
         return str(wav_path), "FluidSynth"
     audio = midi.synthesize(fs=SAMPLE_RATE)
     return write_wav(audio, wav_path), "pretty_midi"
@@ -280,7 +303,7 @@ def generate(
 
 
 def clear_outputs():
-    return None, None, ""
+    return audio_preview(), None, ""
 
 
 def generate_tokens_for_dashboard(
@@ -294,12 +317,39 @@ def generate_tokens_for_dashboard(
     progress_callback=None,
 ):
     config, model, device, runtime = load_model(runtime_mode)
+    tokens = sample_tokens(
+        config,
+        model,
+        device,
+        length,
+        temperature,
+        top_k,
+        top_p,
+        repetition_penalty,
+        seed_int,
+        progress_callback=progress_callback,
+    )
+    return config, tokens, runtime
+
+
+def sample_tokens(
+    config,
+    model,
+    device,
+    length: int,
+    temperature: float,
+    top_k: int,
+    top_p: float,
+    repetition_penalty: float,
+    seed_int: int,
+    progress_callback=None,
+):
     if isinstance(model, OnnxCachedGenerator):
         import random
 
         random.seed(seed_int)
         np.random.seed(seed_int)
-        tokens = model.generate(
+        return model.generate(
             length=int(length),
             temperature=float(temperature),
             top_k=int(top_k),
@@ -308,24 +358,24 @@ def generate_tokens_for_dashboard(
             prompt=[0],
             progress_callback=progress_callback,
         )
-    else:
-        seed_everything(seed_int)
-        from .sample import generate_tokens
 
-        tokens = generate_tokens(
-            model,
-            prompt=[0],
-            length=int(length),
-            seq_len=config.seq_len,
-            temperature=float(temperature),
-            top_k=int(top_k),
-            top_p=float(top_p),
-            device=device,
-            pad_token=config.token_pad,
-            repetition_penalty=float(repetition_penalty),
-            constrained=True,
-        )
-    return config, tokens, runtime
+    seed_everything(seed_int)
+    from .sample import generate_tokens
+
+    return generate_tokens(
+        model,
+        prompt=[0],
+        length=int(length),
+        seq_len=config.seq_len,
+        temperature=float(temperature),
+        top_k=int(top_k),
+        top_p=float(top_p),
+        device=device,
+        pad_token=config.token_pad,
+        repetition_penalty=float(repetition_penalty),
+        constrained=True,
+        progress_callback=progress_callback,
+    )
 
 
 def generate_stream(
@@ -337,53 +387,41 @@ def generate_stream(
     top_p: float,
     repetition_penalty: float,
     seed: int,
+    progress=gr.Progress(),
 ):
     started = time.perf_counter()
     seed_int = resolve_seed(seed)
     target_length = int(length)
-    yield None, None, f"Generating tokens: 0 / {target_length}"
-    progress: queue.Queue[tuple[str, object]] = queue.Queue()
+    yield gr.skip(), gr.skip(), f"Loading {runtime_mode.lower()} model..."
+
+    load_started = time.perf_counter()
+    config, model, device, runtime = load_model(runtime_mode)
+    load_elapsed = time.perf_counter() - load_started
+
+    yield gr.skip(), gr.skip(), f"Generating {target_length} tokens on {runtime}..."
 
     def report_progress(current: int, total: int) -> None:
-        if current == total or current % 32 == 0:
-            progress.put(("progress", (current, total)))
+        progress(current / max(total, 1), desc=f"Generating tokens: {current} / {total}")
 
-    def worker() -> None:
-        try:
-            progress.put(
-                (
-                    "done",
-                    generate_tokens_for_dashboard(
-                        runtime_mode,
-                        target_length,
-                        temperature,
-                        top_k,
-                        top_p,
-                        repetition_penalty,
-                        seed_int,
-                        progress_callback=report_progress,
-                    ),
-                )
-            )
-        except Exception as exc:
-            progress.put(("error", exc))
-
-    threading.Thread(target=worker, daemon=True).start()
-    while True:
-        kind, payload = progress.get()
-        if kind == "progress":
-            current, total = payload
-            yield None, None, f"Generating tokens: {current} / {total}"
-        elif kind == "done":
-            _, tokens, runtime = payload
-            break
-        else:
-            raise payload
-    token_elapsed = time.perf_counter() - started
+    token_started = time.perf_counter()
+    tokens = sample_tokens(
+        config,
+        model,
+        device,
+        target_length,
+        temperature,
+        top_k,
+        top_p,
+        repetition_penalty,
+        seed_int,
+        progress_callback=report_progress,
+    )
+    token_elapsed = time.perf_counter() - token_started
     tokens_per_second = len(tokens) / max(token_elapsed, 1e-6)
-    yield None, None, (
-        f"Generated tokens: {len(tokens)} / {target_length} "
-        f"({tokens_per_second:.1f} tok/s). Rendering piano audio..."
+
+    yield gr.skip(), gr.skip(), (
+        f"Generated {len(tokens)} / {target_length} tokens "
+        f"({tokens_per_second:.1f} tok/s). Rendering audio..."
     )
 
     tmpdir = Path(tempfile.mkdtemp(prefix="piano_ml_"))
@@ -397,13 +435,14 @@ def generate_stream(
     elapsed = time.perf_counter() - started
     final_progress = (
         f"Done: {len(tokens)} / {target_length} tokens, {note_count} notes, "
-        f"{tokens_per_second:.1f} tok/s, render {render_elapsed:.1f}s, "
+        f"{tokens_per_second:.1f} tok/s, {runtime}, load {load_elapsed:.1f}s, "
+        f"render {render_elapsed:.1f}s, "
         f"total {elapsed:.1f}s, {renderer}, seed {seed_int}."
     )
-    yield audio_path, str(wav_path), final_progress
+    yield audio_preview(audio_path), str(wav_path), final_progress
 
 
-with gr.Blocks(title="piano-ml", head=AUDIO_RESET_HEAD) as demo:
+with gr.Blocks(title="piano-ml") as demo:
     gr.Markdown(
         "# piano-ml\n"
         "Sample short piano pieces from a 17M-parameter decoder-only model trained on REMI-style event tokens. "
@@ -427,13 +466,7 @@ with gr.Blocks(title="piano-ml", head=AUDIO_RESET_HEAD) as demo:
     preset.change(apply_preset, inputs=preset, outputs=[temperature, top_k, top_p, repetition_penalty, seed])
     button = gr.Button("Generate", variant="primary")
     progress = gr.Textbox(label="Progress", interactive=False)
-    audio = gr.Audio(
-        label="Audio preview",
-        type="filepath",
-        interactive=False,
-        autoplay=True,
-        elem_id="piano-ml-audio",
-    )
+    audio = audio_preview()
     wav_file = gr.File(label="Download WAV")
     button.click(
         clear_outputs,
@@ -452,7 +485,10 @@ def launch() -> None:
         "server_name": os.getenv("GRADIO_SERVER_NAME", "0.0.0.0"),
         "server_port": int(os.getenv("GRADIO_SERVER_PORT", "7860")),
     }
-    if "ssr_mode" in inspect.signature(demo.launch).parameters:
+    launch_params = inspect.signature(demo.launch).parameters
+    if "head" in launch_params:
+        kwargs["head"] = AUDIO_RESET_HEAD
+    if "ssr_mode" in launch_params:
         kwargs["ssr_mode"] = False
     demo.launch(**kwargs)
 
